@@ -1,0 +1,4 @@
+root = false
+
+[*.yaml]
+indent_size = 2

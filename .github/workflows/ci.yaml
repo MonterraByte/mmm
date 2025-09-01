@@ -1,0 +1,35 @@
+name: CI
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: r7kamura/rust-problem-matchers@v1
+      - uses: actions/checkout@v5
+      - run: cargo fmt --check
+
+  check:
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: -D warnings
+    steps:
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: r7kamura/rust-problem-matchers@v1
+      - uses: actions/checkout@v5
+      - run: cargo check --workspace --all-targets
+
+  clippy:
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: -D warnings
+    steps:
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: r7kamura/rust-problem-matchers@v1
+      - uses: actions/checkout@v5
+      - run: cargo clippy --workspace --all-targets
