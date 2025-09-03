@@ -71,7 +71,7 @@ fn build_path_tree(mods_dir: &Path, mods: &[String]) -> Result<FileTree, TreeBui
     for (mod_index, mod_name) in mods.iter().enumerate() {
         let mod_index = ModIndex::from(mod_index);
         let mod_dir = mods_dir.join(mod_name);
-        iter_dir(&mut tree, mod_index, &mod_dir, root)
+        iter_dir(&mut tree, mod_index, mod_dir, root)
             .map_err(|err| err.with_context(&tree, mod_name, mods_dir, mods))?;
     }
 
@@ -81,33 +81,37 @@ fn build_path_tree(mods_dir: &Path, mods: &[String]) -> Result<FileTree, TreeBui
 fn iter_dir(
     tree: &mut FileTree,
     mod_index: ModIndex,
-    dir: &Path,
+    dir: PathBuf,
     node: NodeId,
 ) -> Result<(), UnresolvedTreeBuildError> {
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let entry_name = entry.file_name().into_string().unwrap();
-        let entry_type = entry.file_type()?;
-        drop(entry);
+    let mut dirs_to_visit = vec![(dir, node)];
 
-        let entry_node = if let Some(child_node) = find_child_with_name(tree, node, &entry_name) {
-            add_to_existing_node(
-                tree.get_mut(child_node).expect("node exists"),
-                mod_index,
-                entry_type.is_dir(),
-            )?;
-            child_node
-        } else {
-            let parent = tree.get_mut(node).expect("node exists");
-            if entry_type.is_dir() {
-                create_dir_node(parent, &entry_name)
+    while let Some((dir, node)) = dirs_to_visit.pop() {
+        for entry in fs::read_dir(&dir)? {
+            let entry = entry?;
+            let entry_name = entry.file_name().into_string().unwrap();
+            let entry_type = entry.file_type()?;
+            drop(entry);
+
+            let entry_node = if let Some(child_node) = find_child_with_name(tree, node, &entry_name) {
+                add_to_existing_node(
+                    tree.get_mut(child_node).expect("node exists"),
+                    mod_index,
+                    entry_type.is_dir(),
+                )?;
+                child_node
             } else {
-                create_file_node(parent, mod_index, &entry_name)
-            }
-        };
+                let parent = tree.get_mut(node).expect("node exists");
+                if entry_type.is_dir() {
+                    create_dir_node(parent, &entry_name)
+                } else {
+                    create_file_node(parent, mod_index, &entry_name)
+                }
+            };
 
-        if entry_type.is_dir() {
-            iter_dir(tree, mod_index, &dir.join(entry_name), entry_node)?; // TODO: use stack
+            if entry_type.is_dir() {
+                dirs_to_visit.push((dir.join(entry_name), entry_node));
+            }
         }
     }
 
