@@ -181,42 +181,36 @@ impl UnresolvedTreeBuildError {
             Self::TypeMismatch(node_id) => {
                 let conflict_node = tree.get(node_id).expect("node exists");
                 let name = &conflict_node.data().name;
+                let expected_dir = matches!(&conflict_node.data().kind, TreeNodeKind::File { .. });
 
-                // TODO: use the dir logic for both branches?
-                match &conflict_node.data().kind {
-                    TreeNodeKind::Dir => {
-                        let ancestors: Vec<_> = conflict_node.ancestors().collect();
-                        let node_path: PathBuf = ancestors.iter().rev().map(|node| &node.data().name).collect();
+                let ancestors: Vec<_> = conflict_node.ancestors().collect();
+                let node_path: PathBuf = ancestors.iter().rev().map(|node| &node.data().name).collect();
 
-                        let mut conflicting_mod_names = Vec::new();
-                        for mod_name in mods {
-                            let path_to_check = {
-                                let mut p = mods_dir.to_owned();
-                                p.push(mod_name);
-                                p.join(&node_path)
-                            };
-                            match fs::symlink_metadata(&path_to_check) {
-                                Ok(m) => {
-                                    if m.is_dir() {
-                                        conflicting_mod_names.push(mod_name);
-                                    }
-                                }
-                                Err(err) => return TreeBuildError::Io(err), // TODO: log initial error
+                let mut conflicting_mod_names = Vec::new();
+                for mod_name in mods {
+                    let path_to_check = {
+                        let mut p = mods_dir.to_owned();
+                        p.push(mod_name);
+                        p.join(&node_path)
+                    };
+                    match fs::symlink_metadata(&path_to_check) {
+                        Ok(m) => {
+                            if m.is_dir() != expected_dir {
+                                conflicting_mod_names.push(mod_name);
                             }
                         }
+                        Err(err) => return TreeBuildError::Io(err), // TODO: log initial error
+                    }
+                }
 
-                        let joined_conflicting_mod_names = itertools::join(conflicting_mod_names, "', '");
-                        TreeBuildError::TypeMismatch(format!(
-                            "'{name}' is used as both a directory and a file by different mods: it's a file in '{mod_name}', but a directory in '{joined_conflicting_mod_names}'"
-                        ))
-                    }
-                    TreeNodeKind::File { providing_mods } => {
-                        let conflicting_mod_names = providing_mods.iter().map(|idx| &mods[idx.0 as usize]);
-                        let joined_conflicting_mod_names = itertools::join(conflicting_mod_names, "', '");
-                        TreeBuildError::TypeMismatch(format!(
-                            "'{name}' is used as both a directory and a file by different mods: it's a directory in '{mod_name}', but a file in '{joined_conflicting_mod_names}'"
-                        ))
-                    }
+                let joined_conflicting_mod_names = itertools::join(conflicting_mod_names, "', '");
+                match &conflict_node.data().kind {
+                    TreeNodeKind::Dir => TreeBuildError::TypeMismatch(format!(
+                        "'{name}' is used as both a directory and a file by different mods: it's a file in '{mod_name}', but a directory in '{joined_conflicting_mod_names}'"
+                    )),
+                    TreeNodeKind::File { .. } => TreeBuildError::TypeMismatch(format!(
+                        "'{name}' is used as both a directory and a file by different mods: it's a directory in '{mod_name}', but a file in '{joined_conflicting_mod_names}'"
+                    )),
                 }
             }
         }
