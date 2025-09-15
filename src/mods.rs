@@ -30,7 +30,7 @@ pub struct Mods {
 
 impl Mods {
     pub fn read(base_dir: &Path) -> Result<Self, io::Error> {
-        let dir = base_dir.join("mods");
+        let dir = base_dir.join("mods").canonicalize()?;
         let names: Vec<String> = {
             let mut file = fs::File::open(base_dir.join("mods.json"))?;
             serde_json::from_reader(&mut file)?
@@ -80,6 +80,16 @@ const _: () = assert!(mem::size_of::<SmallVec<[ModIndex; 5]>>() == 32);
 pub struct TreeNode {
     name: CompactString,
     kind: TreeNodeKind,
+}
+
+impl TreeNode {
+    pub fn name(&self) -> &CompactString {
+        &self.name
+    }
+
+    pub fn kind(&self) -> &TreeNodeKind {
+        &self.kind
+    }
 }
 
 #[derive(Debug)]

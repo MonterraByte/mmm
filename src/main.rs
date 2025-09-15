@@ -17,12 +17,15 @@
 
 mod mods;
 mod mount;
+mod staging;
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use clap::Parser;
 
 use crate::mods::Mods;
+use crate::staging::build_staging_tree;
 
 #[derive(Parser)]
 struct Args {
@@ -37,4 +40,11 @@ fn main() {
 
     let tree = mods::build_path_tree(&mods).unwrap();
     ptree::print_tree(&mods::FileTreeDisplay::new(&tree, &mods)).unwrap();
+
+    let staging_dir = build_staging_tree(&tree, &mods).expect("build staging tree");
+    println!("Built staging tree at '{}'", staging_dir.path().display());
+
+    std::thread::sleep(Duration::from_secs(30));
+
+    staging_dir.unmount().expect("unmounting failed");
 }
