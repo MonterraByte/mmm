@@ -23,6 +23,46 @@ use nary_tree::{NodeId, NodeMut, Tree, TreeBuilder};
 use smallvec::{SmallVec, smallvec};
 use thiserror::Error;
 
+pub struct Mods {
+    dir: PathBuf,
+    names: Vec<String>,
+}
+
+impl Mods {
+    pub fn read(base_dir: &Path) -> Result<Self, io::Error> {
+        let dir = base_dir.join("mods");
+        let names: Vec<String> = {
+            let mut file = fs::File::open(base_dir.join("mods.json"))?;
+            serde_json::from_reader(&mut file)?
+        };
+
+        Ok(Self { dir, names })
+    }
+
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    pub fn names(&self) -> &[String] {
+        &self.names
+    }
+
+    pub fn name(&self, idx: ModIndex) -> Option<&str> {
+        self.names.get(idx.0 as usize).map(String::as_str)
+    }
+
+    pub fn path(&self, idx: ModIndex) -> Option<PathBuf> {
+        self.names.get(idx.0 as usize).map(|name| self.dir.join(name))
+    }
+
+    pub fn enumerate(&self) -> impl Iterator<Item = (ModIndex, &str)> {
+        self.names
+            .iter()
+            .enumerate()
+            .map(|(i, m)| (ModIndex::from(i), m.as_str()))
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ModIndex(u32);
 
@@ -51,7 +91,7 @@ pub enum TreeNodeKind {
 pub type FileTree = Tree<TreeNode>;
 type FileNodeMut<'a> = NodeMut<'a, TreeNode>;
 
-pub fn build_path_tree(mods_dir: &Path, mods: &[String]) -> Result<FileTree, TreeBuildError> {
+pub fn build_path_tree(mods: &Mods) -> Result<FileTree, TreeBuildError> {
     let mut tree = TreeBuilder::new()
         .with_root(TreeNode {
             name: CompactString::const_new("."),
@@ -60,11 +100,9 @@ pub fn build_path_tree(mods_dir: &Path, mods: &[String]) -> Result<FileTree, Tre
         .build();
     let root = tree.root_id().expect("has root node");
 
-    for (mod_index, mod_name) in mods.iter().enumerate() {
-        let mod_index = ModIndex::from(mod_index);
-        let mod_dir = mods_dir.join(mod_name);
-        iter_dir(&mut tree, mod_index, mod_dir, root)
-            .map_err(|err| err.with_context(&tree, mod_name, mods_dir, mods))?;
+    for (mod_index, mod_name) in mods.enumerate() {
+        let mod_dir = mods.dir().join(mod_name);
+        iter_dir(&mut tree, mod_index, mod_dir, root).map_err(|err| err.with_context(&tree, mod_name, mods))?;
     }
 
     Ok(tree)
@@ -171,7 +209,7 @@ impl From<io::Error> for UnresolvedTreeBuildError {
 }
 
 impl UnresolvedTreeBuildError {
-    fn with_context(self, tree: &FileTree, mod_name: &str, mods_dir: &Path, mods: &[String]) -> TreeBuildError {
+    fn with_context(self, tree: &FileTree, mod_name: &str, mods: &Mods) -> TreeBuildError {
         match self {
             Self::Io(err) => TreeBuildError::Io(err),
             Self::TypeMismatch(node_id) => {
@@ -183,9 +221,9 @@ impl UnresolvedTreeBuildError {
                 let node_path: PathBuf = ancestors.iter().rev().map(|node| &node.data().name).collect();
 
                 let mut conflicting_mod_names = Vec::new();
-                for mod_name in mods {
+                for mod_name in mods.names() {
                     let path_to_check = {
-                        let mut p = mods_dir.to_owned();
+                        let mut p = mods.dir().to_owned();
                         p.push(mod_name);
                         p.join(&node_path)
                     };
@@ -223,12 +261,12 @@ pub enum TreeBuildError {
 #[derive(Clone)]
 pub struct FileTreeDisplay<'a> {
     tree: &'a FileTree,
-    mods: &'a [String],
+    mods: &'a Mods,
     current_node: NodeId,
 }
 
 impl<'a> FileTreeDisplay<'a> {
-    pub fn new(tree: &'a FileTree, mods: &'a [String]) -> FileTreeDisplay<'a> {
+    pub fn new(tree: &'a FileTree, mods: &'a Mods) -> FileTreeDisplay<'a> {
         Self {
             tree,
             mods,
@@ -249,7 +287,12 @@ impl ptree::TreeItem for FileTreeDisplay<'_> {
                     f,
                     "📄 {} ({})",
                     style.paint(&node.data().name),
-                    itertools::join(providing_mods.iter().map(|idx| &self.mods[idx.0 as usize]), "', '")
+                    itertools::join(
+                        providing_mods
+                            .iter()
+                            .map(|idx| self.mods.name(*idx).expect("mod exists")),
+                        "', '"
+                    )
                 )
             }
         }

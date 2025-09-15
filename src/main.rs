@@ -17,10 +17,11 @@
 
 mod mods;
 
-use std::fs;
 use std::path::PathBuf;
 
 use clap::Parser;
+
+use crate::mods::Mods;
 
 #[derive(Parser)]
 struct Args {
@@ -31,12 +32,8 @@ fn main() {
     let args = Args::parse();
 
     let base_dir = args.path;
-    let mods_dir = base_dir.join("mods");
-    let mods: Vec<String> = {
-        let mut file = fs::File::open(base_dir.join("mods.json")).expect("open mods json");
-        serde_json::from_reader(&mut file).expect("deserialize mods json")
-    };
+    let mods = Mods::read(&base_dir).expect("failed reading mods");
 
-    let tree = mods::build_path_tree(&mods_dir, &mods).unwrap();
+    let tree = mods::build_path_tree(&mods).unwrap();
     ptree::print_tree(&mods::FileTreeDisplay::new(&tree, &mods)).unwrap();
 }
