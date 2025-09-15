@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 
 mod mods;
+mod mount;
 
 use std::path::PathBuf;
 
