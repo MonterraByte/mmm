@@ -13,25 +13,26 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use std::ffi::OsString;
+use std::ffi::CString;
 use std::io;
 use std::path::Path;
 
-use nix::mount::{MntFlags, MsFlags, mount, umount2};
-use nix::unistd::{Gid, Uid};
+use rustix::io::Errno;
+use rustix::mount::{MountFlags, UnmountFlags, mount, unmount};
+use rustix::process::{getgid, getuid};
 use tempfile::TempDir;
 use thiserror::Error;
 
-fn mount_tmpfs(dir: &Path) -> Result<(), nix::Error> {
-    let uid = Uid::current();
-    let gid = Gid::current();
-    let mount_args: OsString = format!("uid={uid},gid={gid},mode=750").into();
+fn mount_tmpfs(dir: &Path) -> Result<(), Errno> {
+    let uid = getuid();
+    let gid = getgid();
+    let mount_args = CString::new(format!("uid={uid},gid={gid},mode=750")).expect("no NUL bytes");
     mount(
-        Some("tmpfs"),
+        "tmpfs",
         dir,
-        Some("tmpfs"),
-        MsFlags::MS_NODEV | MsFlags::MS_NOSUID | MsFlags::MS_NOATIME,
-        Some(mount_args.as_os_str()),
+        "tmpfs",
+        MountFlags::NODEV | MountFlags::NOSUID | MountFlags::NOATIME,
+        Some(mount_args.as_ref()),
     )
 }
 
@@ -57,8 +58,8 @@ impl TempMount {
         Ok(())
     }
 
-    fn unmount_inner(&mut self) -> Result<(), nix::Error> {
-        umount2(self.path(), MntFlags::MNT_DETACH | MntFlags::UMOUNT_NOFOLLOW)
+    fn unmount_inner(&mut self) -> Result<(), Errno> {
+        unmount(self.path(), UnmountFlags::DETACH | UnmountFlags::NOFOLLOW)
     }
 }
 
@@ -75,7 +76,7 @@ impl Drop for TempMount {
 #[derive(Debug, Error)]
 pub enum TempMountCreationError {
     #[error("failed to mount tmpfs: {0}")]
-    Mount(#[source] nix::Error),
+    Mount(#[source] Errno),
     #[error("failed to create temporary directory: {0}")]
     TempDir(#[source] io::Error),
 }
@@ -83,7 +84,7 @@ pub enum TempMountCreationError {
 #[derive(Debug, Error)]
 pub enum TempMountUnmountError {
     #[error("failed to unmount tmpfs: {0}")]
-    Mount(#[source] nix::Error),
+    Mount(#[source] Errno),
     #[error("failed to delete temporary directory: {0}")]
     TempDir(#[source] io::Error),
 }
