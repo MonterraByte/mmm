@@ -13,27 +13,52 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use std::ffi::CString;
 use std::io;
 use std::path::Path;
 
+use rustix::fs::CWD;
 use rustix::io::Errno;
-use rustix::mount::{MountFlags, UnmountFlags, mount, unmount};
+use rustix::mount::{
+    FsMountFlags, FsOpenFlags, MountAttrFlags, MoveMountFlags, UnmountFlags, fsconfig_create, fsconfig_set_string,
+    fsmount, fsopen, move_mount, unmount,
+};
 use rustix::process::{getgid, getuid};
 use tempfile::TempDir;
 use thiserror::Error;
 
-fn mount_tmpfs(dir: &Path) -> Result<(), Errno> {
+fn mount_tmpfs(dir: &Path) -> Result<(), MountError> {
     let uid = getuid();
     let gid = getgid();
-    let mount_args = CString::new(format!("uid={uid},gid={gid},mode=750")).expect("no NUL bytes");
-    mount(
-        "tmpfs",
-        dir,
-        "tmpfs",
-        MountFlags::NODEV | MountFlags::NOSUID | MountFlags::NOATIME,
-        Some(mount_args.as_ref()),
+
+    let fs_fd = fsopen("tmpfs", FsOpenFlags::FSOPEN_CLOEXEC).map_err(MountError::FsOpen)?;
+    fsconfig_set_string(&fs_fd, "source", "tmpfs").map_err(MountError::FsConfigSet)?;
+    fsconfig_set_string(&fs_fd, "uid", uid.to_string()).map_err(MountError::FsConfigSet)?;
+    fsconfig_set_string(&fs_fd, "gid", gid.to_string()).map_err(MountError::FsConfigSet)?;
+    fsconfig_set_string(&fs_fd, "mode", "750").map_err(MountError::FsConfigSet)?;
+    fsconfig_create(&fs_fd).map_err(MountError::FsConfigCreate)?;
+
+    let mfd = fsmount(
+        &fs_fd,
+        FsMountFlags::FSMOUNT_CLOEXEC,
+        MountAttrFlags::MOUNT_ATTR_NODEV | MountAttrFlags::MOUNT_ATTR_NOSUID | MountAttrFlags::MOUNT_ATTR_NOATIME,
     )
+    .map_err(MountError::FsMount)?;
+
+    move_mount(mfd, "", CWD, dir, MoveMountFlags::MOVE_MOUNT_F_EMPTY_PATH).map_err(MountError::MoveMount)
+}
+
+#[derive(Copy, Clone, Debug, Error)]
+pub enum MountError {
+    #[error("fsconfig_create failed: {0}")]
+    FsConfigCreate(#[source] Errno),
+    #[error("fsconfig_set_* failed: {0}")]
+    FsConfigSet(#[source] Errno),
+    #[error("fsmount failed: {0}")]
+    FsMount(#[source] Errno),
+    #[error("fsopen failed: {0}")]
+    FsOpen(#[source] Errno),
+    #[error("move_mount failed: {0}")]
+    MoveMount(#[source] Errno),
 }
 
 pub struct TempMount(Option<TempDir>);
@@ -41,7 +66,7 @@ pub struct TempMount(Option<TempDir>);
 impl TempMount {
     pub fn new() -> Result<Self, TempMountCreationError> {
         let temp_dir = TempDir::with_prefix("mmm-").map_err(TempMountCreationError::TempDir)?;
-        mount_tmpfs(temp_dir.path()).map_err(TempMountCreationError::Mount)?;
+        mount_tmpfs(temp_dir.path())?;
         Ok(Self(Some(temp_dir)))
     }
 
@@ -50,7 +75,7 @@ impl TempMount {
     }
 
     pub fn unmount(mut self) -> Result<(), TempMountUnmountError> {
-        self.unmount_inner().map_err(TempMountUnmountError::Mount)?;
+        self.unmount_inner().map_err(TempMountUnmountError::Unmount)?;
         if let Some(path) = self.0.take() {
             path.close().map_err(TempMountUnmountError::TempDir)?;
         }
@@ -76,15 +101,15 @@ impl Drop for TempMount {
 #[derive(Debug, Error)]
 pub enum TempMountCreationError {
     #[error("failed to mount tmpfs: {0}")]
-    Mount(#[source] Errno),
+    Mount(#[from] MountError),
     #[error("failed to create temporary directory: {0}")]
     TempDir(#[source] io::Error),
 }
 
 #[derive(Debug, Error)]
 pub enum TempMountUnmountError {
-    #[error("failed to unmount tmpfs: {0}")]
-    Mount(#[source] Errno),
     #[error("failed to delete temporary directory: {0}")]
     TempDir(#[source] io::Error),
+    #[error("failed to unmount tmpfs: {0}")]
+    Unmount(#[source] Errno),
 }
