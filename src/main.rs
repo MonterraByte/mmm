@@ -19,10 +19,12 @@ mod mods;
 mod mount;
 mod staging;
 
+use std::io::Read;
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::time::Duration;
 
 use clap::Parser;
+use signal_hook::consts::SIGINT;
 
 use crate::mods::Mods;
 use crate::mount::OverlayMount;
@@ -48,8 +50,20 @@ fn main() {
     let overlay_mount = OverlayMount::new(staging_dir.path(), &game_path).expect("mount overlay");
     println!("Mounted overlay over {}", overlay_mount.path().display());
 
-    std::thread::sleep(Duration::from_secs(30));
+    println!("\nPress Control + C to unmount the overlay");
+    wait_for_sigterm();
 
     overlay_mount.unmount().expect("unmounting failed");
     staging_dir.unmount().expect("unmounting failed");
+    println!("\nUnmount successful");
+}
+
+fn wait_for_sigterm() {
+    let (mut read, write) = UnixStream::pair().expect("create socket pair");
+    let handler = signal_hook::low_level::pipe::register(SIGINT, write).expect("register SIGTERM handler");
+
+    let mut buff = [0];
+    read.read_exact(&mut buff).expect("read from the self-pipe");
+
+    signal_hook::low_level::unregister(handler);
 }
