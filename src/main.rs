@@ -15,6 +15,7 @@
 
 #![forbid(unsafe_code)]
 
+mod caps;
 mod mods;
 mod mount;
 mod staging;
@@ -37,6 +38,7 @@ struct Args {
 }
 
 fn main() {
+    caps::init();
     let args = Args::parse();
 
     let mods = Mods::read(&args.instance_path).expect("failed reading mods");

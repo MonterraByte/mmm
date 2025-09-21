@@ -26,9 +26,12 @@ use rustix::process::{getgid, getuid};
 use tempfile::TempDir;
 use thiserror::Error;
 
+use crate::caps::ElevatedCaps;
+
 fn mount_overlayfs(staging_dir: &Path, game_dir: &Path) -> Result<(), MountError> {
     assert!(staging_dir.is_absolute());
     assert!(game_dir.is_absolute());
+    let _caps = ElevatedCaps::raise();
 
     let fs_fd = fsopen("overlay", FsOpenFlags::FSOPEN_CLOEXEC).map_err(MountError::FsOpen)?;
     fsconfig_set_string(&fs_fd, "source", "overlay").map_err(MountError::FsConfigSet)?;
@@ -47,6 +50,7 @@ fn mount_overlayfs(staging_dir: &Path, game_dir: &Path) -> Result<(), MountError
 }
 
 fn mount_tmpfs(dir: &Path) -> Result<(), MountError> {
+    let _caps = ElevatedCaps::raise();
     let uid = getuid();
     let gid = getgid();
 
@@ -153,6 +157,7 @@ impl<P: AsRef<Path>> UnmountWrapper<P> {
     }
 
     fn unmount_inner(&self) -> Result<(), Errno> {
+        let _caps = ElevatedCaps::raise();
         unmount(self.path(), UnmountFlags::DETACH | UnmountFlags::NOFOLLOW)
     }
 }
