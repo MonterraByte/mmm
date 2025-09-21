@@ -25,26 +25,31 @@ use std::time::Duration;
 use clap::Parser;
 
 use crate::mods::Mods;
+use crate::mount::OverlayMount;
 use crate::staging::build_staging_tree;
 
 #[derive(Parser)]
 struct Args {
-    path: PathBuf,
+    instance_path: PathBuf,
+    game_path: PathBuf,
 }
 
 fn main() {
     let args = Args::parse();
 
-    let base_dir = args.path;
-    let mods = Mods::read(&base_dir).expect("failed reading mods");
-
+    let mods = Mods::read(&args.instance_path).expect("failed reading mods");
     let tree = mods::build_path_tree(&mods).unwrap();
     ptree::print_tree(&mods::FileTreeDisplay::new(&tree, &mods)).unwrap();
 
     let staging_dir = build_staging_tree(&tree, &mods).expect("build staging tree");
     println!("Built staging tree at '{}'", staging_dir.path().display());
 
+    let game_path = args.game_path.canonicalize().expect("canonicalize game path");
+    let overlay_mount = OverlayMount::new(staging_dir.path(), &game_path).expect("mount overlay");
+    println!("Mounted overlay over {}", overlay_mount.path().display());
+
     std::thread::sleep(Duration::from_secs(30));
 
+    overlay_mount.unmount().expect("unmounting failed");
     staging_dir.unmount().expect("unmounting failed");
 }
