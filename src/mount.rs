@@ -19,18 +19,21 @@ use std::path::{Path, PathBuf};
 use rustix::fs::CWD;
 use rustix::io::Errno;
 use rustix::mount::{
-    FsMountFlags, FsOpenFlags, MountAttrFlags, MoveMountFlags, UnmountFlags, fsconfig_create, fsconfig_set_path,
-    fsconfig_set_string, fsmount, fsopen, move_mount, unmount,
+    FsMountFlags, FsOpenFlags, MountAttrFlags, MoveMountFlags, UnmountFlags, fsconfig_create, fsconfig_set_string,
+    fsmount, fsopen, move_mount, unmount,
 };
 use rustix::process::{getgid, getuid};
 use tempfile::TempDir;
 use thiserror::Error;
 
 fn mount_overlayfs(staging_dir: &Path, game_dir: &Path) -> Result<(), MountError> {
+    assert!(staging_dir.is_absolute());
+    assert!(game_dir.is_absolute());
+
     let fs_fd = fsopen("overlay", FsOpenFlags::FSOPEN_CLOEXEC).map_err(MountError::FsOpen)?;
     fsconfig_set_string(&fs_fd, "source", "overlay").map_err(MountError::FsConfigSet)?;
-    fsconfig_set_path(&fs_fd, "lowerdir+", staging_dir, CWD).map_err(MountError::FsConfigSet)?;
-    fsconfig_set_path(&fs_fd, "lowerdir+", game_dir, CWD).map_err(MountError::FsConfigSet)?;
+    fsconfig_set_string(&fs_fd, "lowerdir+", staging_dir).map_err(MountError::FsConfigSet)?;
+    fsconfig_set_string(&fs_fd, "lowerdir+", game_dir).map_err(MountError::FsConfigSet)?;
     fsconfig_create(&fs_fd).map_err(MountError::FsConfigCreate)?;
 
     let mfd = fsmount(
