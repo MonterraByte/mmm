@@ -14,13 +14,14 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use std::io;
+use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
 
-use rustix::fs::CWD;
+use rustix::fs::{Mode, OFlags, fstat, open};
 use rustix::io::Errno;
 use rustix::mount::{
-    FsMountFlags, FsOpenFlags, MountAttrFlags, MoveMountFlags, UnmountFlags, fsconfig_create, fsconfig_set_string,
-    fsmount, fsopen, move_mount, unmount,
+    FsMountFlags, FsOpenFlags, MountAttrFlags, MoveMountFlags, UnmountFlags, fsconfig_create, fsconfig_set_fd,
+    fsconfig_set_string, fsmount, fsopen, move_mount, unmount,
 };
 use rustix::process::{getgid, getuid};
 use tempfile::TempDir;
@@ -28,47 +29,70 @@ use thiserror::Error;
 
 use crate::caps::ElevatedCaps;
 
-fn mount_overlayfs(staging_dir: &Path, game_dir: &Path) -> Result<(), MountError> {
-    assert!(staging_dir.is_absolute());
-    assert!(game_dir.is_absolute());
+fn mount_overlayfs(staging_path: &Path, game_path: &Path) -> Result<(), MountError> {
+    assert!(staging_path.is_absolute());
+    let game_dir = open_dir_and_check_ownership(game_path)?;
     let _caps = ElevatedCaps::raise();
 
     let fs_fd = fsopen("overlay", FsOpenFlags::FSOPEN_CLOEXEC).map_err(MountError::FsOpen)?;
     fsconfig_set_string(&fs_fd, "source", "overlay").map_err(MountError::FsConfigSet)?;
-    fsconfig_set_string(&fs_fd, "lowerdir+", staging_dir).map_err(MountError::FsConfigSet)?;
-    fsconfig_set_string(&fs_fd, "lowerdir+", game_dir).map_err(MountError::FsConfigSet)?;
+    fsconfig_set_string(&fs_fd, "lowerdir+", staging_path).map_err(MountError::FsConfigSet)?;
+    fsconfig_set_fd(&fs_fd, "lowerdir+", &game_dir).map_err(MountError::FsConfigSet)?;
     fsconfig_create(&fs_fd).map_err(MountError::FsConfigCreate)?;
 
-    let mfd = fsmount(
-        &fs_fd,
-        FsMountFlags::FSMOUNT_CLOEXEC,
-        MountAttrFlags::MOUNT_ATTR_NODEV | MountAttrFlags::MOUNT_ATTR_NOSUID | MountAttrFlags::MOUNT_ATTR_NOATIME,
-    )
-    .map_err(MountError::FsMount)?;
-
-    move_mount(mfd, "", CWD, game_dir, MoveMountFlags::MOVE_MOUNT_F_EMPTY_PATH).map_err(MountError::MoveMount)
+    let mfd = fsmount_with_flags(&fs_fd)?;
+    move_mount_fds(&mfd, &game_dir)
 }
 
-fn mount_tmpfs(dir: &Path) -> Result<(), MountError> {
+fn mount_tmpfs(path: &Path) -> Result<(), MountError> {
+    let dir = open_dir_and_check_ownership(path)?;
     let _caps = ElevatedCaps::raise();
-    let uid = getuid();
-    let gid = getgid();
 
     let fs_fd = fsopen("tmpfs", FsOpenFlags::FSOPEN_CLOEXEC).map_err(MountError::FsOpen)?;
     fsconfig_set_string(&fs_fd, "source", "tmpfs").map_err(MountError::FsConfigSet)?;
-    fsconfig_set_string(&fs_fd, "uid", uid.to_string()).map_err(MountError::FsConfigSet)?;
-    fsconfig_set_string(&fs_fd, "gid", gid.to_string()).map_err(MountError::FsConfigSet)?;
+    fsconfig_set_string(&fs_fd, "uid", getuid().to_string()).map_err(MountError::FsConfigSet)?;
+    fsconfig_set_string(&fs_fd, "gid", getgid().to_string()).map_err(MountError::FsConfigSet)?;
     fsconfig_set_string(&fs_fd, "mode", "750").map_err(MountError::FsConfigSet)?;
     fsconfig_create(&fs_fd).map_err(MountError::FsConfigCreate)?;
 
-    let mfd = fsmount(
-        &fs_fd,
+    let mfd = fsmount_with_flags(&fs_fd)?;
+    move_mount_fds(&mfd, &dir)
+}
+
+fn open_dir_and_check_ownership(path: &Path) -> Result<OwnedFd, MountError> {
+    let fd = open(
+        path,
+        OFlags::PATH | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(MountError::Open)?;
+
+    let stat = fstat(&fd).map_err(MountError::Fstat)?;
+    if stat.st_uid != getuid().as_raw() {
+        return Err(MountError::NotOwned);
+    }
+
+    Ok(fd)
+}
+
+fn fsmount_with_flags(fs_fd: &OwnedFd) -> Result<OwnedFd, MountError> {
+    fsmount(
+        fs_fd,
         FsMountFlags::FSMOUNT_CLOEXEC,
         MountAttrFlags::MOUNT_ATTR_NODEV | MountAttrFlags::MOUNT_ATTR_NOSUID | MountAttrFlags::MOUNT_ATTR_NOATIME,
     )
-    .map_err(MountError::FsMount)?;
+    .map_err(MountError::FsMount)
+}
 
-    move_mount(mfd, "", CWD, dir, MoveMountFlags::MOVE_MOUNT_F_EMPTY_PATH).map_err(MountError::MoveMount)
+fn move_mount_fds(from_fd: &OwnedFd, to_fd: &OwnedFd) -> Result<(), MountError> {
+    move_mount(
+        from_fd,
+        "",
+        to_fd,
+        "",
+        MoveMountFlags::MOVE_MOUNT_F_EMPTY_PATH | MoveMountFlags::MOVE_MOUNT_T_EMPTY_PATH,
+    )
+    .map_err(MountError::MoveMount)
 }
 
 #[derive(Copy, Clone, Debug, Error)]
@@ -81,8 +105,14 @@ pub enum MountError {
     FsMount(#[source] Errno),
     #[error("fsopen failed: {0}")]
     FsOpen(#[source] Errno),
+    #[error("failed to fstat mount target directory: {0}")]
+    Fstat(#[source] Errno),
     #[error("move_mount failed: {0}")]
     MoveMount(#[source] Errno),
+    #[error("target directory is not owned by the user")]
+    NotOwned,
+    #[error("failed to open mount target directory: {0}")]
+    Open(#[source] Errno),
 }
 
 #[derive(Debug)]
