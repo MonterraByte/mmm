@@ -1,4 +1,4 @@
 root = false
 
-[*.yaml]
+[*.y{,a}ml]
 indent_size = 2
