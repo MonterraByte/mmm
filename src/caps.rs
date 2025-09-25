@@ -13,6 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use std::marker::PhantomData;
+
 use rustix::thread;
 use rustix::thread::{CapabilitySet, CapabilitySets};
 
@@ -51,12 +53,19 @@ fn lower() {
     thread::set_capabilities(None, CAPS_DISABLED).expect("drop capabilities");
 }
 
-pub struct ElevatedCaps;
+pub struct ElevatedCaps {
+    // Each thread has its own capability set, so this struct must not be `Send`,
+    // to correctly drop the capabilities that it raised.
+    //
+    // Until the negative_impls feature is stabilized (https://github.com/rust-lang/rust/issues/68318),
+    // using `PhantomData` is the nicer way to guarantee this.
+    _marker: PhantomData<*const ()>,
+}
 
 impl ElevatedCaps {
     pub fn raise() -> Self {
         thread::set_capabilities(None, CAPS_ENABLED).expect("raise capabilities");
-        Self
+        Self { _marker: PhantomData }
     }
 }
 
