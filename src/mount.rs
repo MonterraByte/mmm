@@ -27,7 +27,7 @@ use rustix::process::{getgid, getuid};
 use tempfile::TempDir;
 use thiserror::Error;
 
-use crate::caps::ElevatedCaps;
+use crate::caps::{ElevatedCaps, ensure_cap_sys_admin, have_cap_sys_admin};
 
 fn mount_overlayfs(staging_path: &Path, game_path: &Path) -> Result<(), MountError> {
     assert!(staging_path.is_absolute());
@@ -199,5 +199,52 @@ impl<P: AsRef<Path>> Drop for UnmountWrapper<P> {
             return;
         }
         let _ = self.unmount_inner();
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum MountMethod {
+    CapAdmin,
+    UserNamespace,
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+pub struct MountMethodChoice(Option<MountMethod>);
+
+impl MountMethodChoice {
+    pub fn to_mount_method(self) -> MountMethod {
+        match self.0 {
+            Some(MountMethod::UserNamespace) => MountMethod::UserNamespace,
+            Some(MountMethod::CapAdmin) => {
+                ensure_cap_sys_admin();
+                MountMethod::CapAdmin
+            }
+            None => {
+                if have_cap_sys_admin() {
+                    MountMethod::CapAdmin
+                } else {
+                    eprintln!("The SYS_ADMIN capability is missing, falling back to user namespaces.");
+                    MountMethod::UserNamespace
+                }
+            }
+        }
+    }
+}
+
+impl clap::ValueEnum for MountMethodChoice {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[
+            Self(None),
+            Self(Some(MountMethod::CapAdmin)),
+            Self(Some(MountMethod::UserNamespace)),
+        ]
+    }
+
+    fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
+        match self {
+            Self(None) => Some(clap::builder::PossibleValue::new("auto")),
+            Self(Some(MountMethod::CapAdmin)) => Some(clap::builder::PossibleValue::new("admin")),
+            Self(Some(MountMethod::UserNamespace)) => Some(clap::builder::PossibleValue::new("userns")),
+        }
     }
 }

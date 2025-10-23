@@ -30,11 +30,29 @@ const CAPS_ENABLED: CapabilitySets = CapabilitySets {
     inheritable: CapabilitySet::empty(),
 };
 
+const CAPS_NONE: CapabilitySets = CapabilitySets {
+    effective: CapabilitySet::empty(),
+    permitted: CapabilitySet::empty(),
+    inheritable: CapabilitySet::empty(),
+};
+
 pub fn init() {
     thread::clear_ambient_capability_set().expect("clear ambient capabilities");
+    lower();
+}
 
+fn lower() {
+    let caps = if have_cap_sys_admin() { CAPS_DISABLED } else { CAPS_NONE };
+    thread::set_capabilities(None, caps).expect("drop capabilities");
+}
+
+pub fn have_cap_sys_admin() -> bool {
     let current_caps = thread::capabilities(None).expect("get current capabilities");
-    if !current_caps.permitted.contains(CapabilitySet::SYS_ADMIN) {
+    current_caps.permitted.contains(CapabilitySet::SYS_ADMIN)
+}
+
+pub fn ensure_cap_sys_admin() {
+    if !have_cap_sys_admin() {
         eprintln!(
             "The SYS_ADMIN capability, required for mounting and unmounting filesystems, is missing.\nRun `setcap cap_sys_admin=p '{}'` as root to grant it to this program, then try again.",
             std::env::current_exe()
@@ -45,12 +63,6 @@ pub fn init() {
         );
         std::process::exit(1);
     }
-
-    lower();
-}
-
-fn lower() {
-    thread::set_capabilities(None, CAPS_DISABLED).expect("drop capabilities");
 }
 
 pub struct ElevatedCaps {

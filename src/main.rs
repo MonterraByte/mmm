@@ -13,11 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#![forbid(unsafe_code)]
-
 mod caps;
 mod mods;
 mod mount;
+mod namespace;
 mod staging;
 
 use std::io::Read;
@@ -28,11 +27,13 @@ use clap::Parser;
 use signal_hook::consts::SIGINT;
 
 use crate::mods::Mods;
-use crate::mount::OverlayMount;
+use crate::mount::{MountMethod, MountMethodChoice, OverlayMount};
 use crate::staging::build_staging_tree;
 
 #[derive(Parser)]
 struct Args {
+    #[arg(value_enum, short, long, required = false, default_value_t)]
+    mount_method: MountMethodChoice,
     instance_path: PathBuf,
     game_path: PathBuf,
 }
@@ -40,10 +41,15 @@ struct Args {
 fn main() {
     caps::init();
     let args = Args::parse();
+    let mount_method = args.mount_method.to_mount_method();
 
     let mods = Mods::read(&args.instance_path).expect("failed reading mods");
     let tree = mods::build_path_tree(&mods).unwrap();
     ptree::print_tree(&mods::FileTreeDisplay::new(&tree, &mods)).unwrap();
+
+    if matches!(mount_method, MountMethod::UserNamespace) {
+        namespace::enter_namespace().expect("failed to enter user namespace");
+    }
 
     let staging_dir = build_staging_tree(&tree, &mods).expect("build staging tree");
     println!("Built staging tree at '{}'", staging_dir.path().display());
