@@ -21,7 +21,8 @@ mod staging;
 
 use std::io::Read;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use clap::Parser;
 use signal_hook::consts::SIGINT;
@@ -36,12 +37,18 @@ struct Args {
     mount_method: MountMethodChoice,
     instance_path: PathBuf,
     game_path: PathBuf,
+    #[arg(short = 'x', long)]
+    exec: Option<PathBuf>,
 }
 
 fn main() {
     caps::init();
     let args = Args::parse();
     let mount_method = args.mount_method.to_mount_method();
+    if matches!(mount_method, MountMethod::UserNamespace) && args.exec.is_none() {
+        eprintln!("--exec is required when using user namespaces");
+        std::process::exit(1);
+    }
 
     let mods = Mods::read(&args.instance_path).expect("failed reading mods");
     let tree = mods::build_path_tree(&mods).unwrap();
@@ -58,12 +65,39 @@ fn main() {
     let overlay_mount = OverlayMount::new(staging_dir.path(), &game_path).expect("mount overlay");
     println!("Mounted overlay over {}", overlay_mount.path().display());
 
-    println!("\nPress Control + C to unmount the overlay");
-    wait_for_sigterm();
+    if let Some(mut exe) = args.exec {
+        if exe.is_relative() {
+            exe = args.game_path.join(exe);
+        }
+        run_game_and_wait(&exe);
+    } else {
+        println!("\nPress Control + C to unmount the overlay");
+        wait_for_sigterm();
+    }
 
     overlay_mount.unmount().expect("unmounting failed");
     staging_dir.unmount().expect("unmounting failed");
     println!("\nUnmount successful");
+}
+
+fn run_game_and_wait(exe: &Path) {
+    let mut game = Command::new(exe)
+        .current_dir(exe.parent().expect("executable has parent directory"))
+        .spawn()
+        .expect("failed to execute game");
+
+    let exe_name = exe.file_name().expect("executable has file name").display();
+    println!("\nWaiting for {} to exit", exe_name);
+
+    let exit_status = game.wait().expect("waitpid failed");
+    match exit_status.code() {
+        Some(code) => {
+            if code != 0 {
+                eprintln!("{} exited with code {}", exe_name, code);
+            }
+        }
+        None => eprintln!("{} was terminated by a signal", exe_name),
+    }
 }
 
 fn wait_for_sigterm() {
