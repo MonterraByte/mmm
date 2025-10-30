@@ -21,8 +21,8 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-use crate::mods::Mods;
-use crate::mods::{FileTree, TreeNodeKind};
+use mmm_core::mods::{FileTree, Mods, TreeNodeKind};
+
 use crate::mount::{TempMount, TempMountCreationError};
 
 pub fn build_staging_tree(tree: &FileTree, mods: &Mods) -> Result<TempMount, StagingTreeBuildError> {

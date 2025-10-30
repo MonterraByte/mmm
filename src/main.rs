@@ -14,7 +14,6 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 mod caps;
-mod mods;
 mod mount;
 mod namespace;
 mod staging;
@@ -27,7 +26,8 @@ use std::process::Command;
 use clap::Parser;
 use signal_hook::consts::SIGINT;
 
-use crate::mods::Mods;
+use mmm_core::mods::{self, Mods};
+
 use crate::mount::{MountMethod, MountMethodChoice, OverlayMount};
 use crate::staging::build_staging_tree;
 

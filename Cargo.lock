@@ -223,15 +223,24 @@ name = "mmm"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "mmm-core",
+ "ptree",
+ "rustix",
+ "signal-hook",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "mmm-core"
+version = "0.0.0"
+dependencies = [
  "compact_str",
  "itertools",
  "nary_tree",
  "ptree",
- "rustix",
  "serde_json",
- "signal-hook",
  "smallvec",
- "tempfile",
  "thiserror",
 ]
 
