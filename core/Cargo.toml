@@ -7,8 +7,11 @@ license = "GPL-3.0-or-later"
 [dependencies]
 compact_str = "0.9"
 itertools = "0.14"
-ptree = { version = "0.5", default-features = false, features = ["ansi"] }
+ptree = { workspace = true }
 nary_tree = "0.4"
 serde_json = "1"
 smallvec = { version = "1.15", features = ["union"] }
-thiserror = "2"
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

@@ -2,24 +2,14 @@
 resolver = "3"
 members = [
     "core",
+    "deploy",
 ]
 
-[package]
-name = "mmm"
-version = "0.0.0"
-edition = "2024"
-license = "GPL-3.0-or-later"
-
-[dependencies]
-clap = { version = "4.5", features = ["derive"] }
-mmm-core = { path = "core" }
+[workspace.dependencies]
 ptree = { version = "0.5", default-features = false, features = ["ansi"] }
-rustix = { version = "1.1", features = ["fs", "mount", "process", "thread", "linux_5_11"] }
-signal-hook = { version = "0.3", default-features = false }
-tempfile = "3.22"
 thiserror = "2"
 
-[lints.clippy]
+[workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 if_not_else = "allow"

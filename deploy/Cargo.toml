@@ -1,0 +1,17 @@
+[package]
+name = "mmm-deploy"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+mmm-core = { path = "../core" }
+ptree = { workspace = true }
+rustix = { version = "1.1", features = ["fs", "mount", "process", "thread", "linux_5_11"] }
+signal-hook = { version = "0.3", default-features = false }
+tempfile = "3.22"
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
