@@ -39,18 +39,22 @@ impl Mods {
         Ok(Self { dir, names })
     }
 
+    #[must_use]
     pub fn dir(&self) -> &Path {
         &self.dir
     }
 
+    #[must_use]
     pub fn names(&self) -> &[String] {
         &self.names
     }
 
+    #[must_use]
     pub fn name(&self, idx: ModIndex) -> Option<&str> {
         self.names.get(idx.0 as usize).map(String::as_str)
     }
 
+    #[must_use]
     pub fn path(&self, idx: ModIndex) -> Option<PathBuf> {
         self.names.get(idx.0 as usize).map(|name| self.dir.join(name))
     }
@@ -83,10 +87,12 @@ pub struct TreeNode {
 }
 
 impl TreeNode {
+    #[must_use]
     pub fn name(&self) -> &CompactString {
         &self.name
     }
 
+    #[must_use]
     pub fn kind(&self) -> &TreeNodeKind {
         &self.kind
     }
@@ -276,6 +282,7 @@ pub struct FileTreeDisplay<'a> {
 }
 
 impl<'a> FileTreeDisplay<'a> {
+    #[must_use]
     pub fn new(tree: &'a FileTree, mods: &'a Mods) -> FileTreeDisplay<'a> {
         Self {
             tree,
