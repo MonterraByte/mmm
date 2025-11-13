@@ -43,10 +43,8 @@ pub fn build_staging_tree(tree: &FileTree, mods: &Mods) -> Result<TempMount, Sta
 
         match node.data().kind() {
             TreeNodeKind::Dir => {
-                fs::create_dir(&staging_path).map_err(|source| StagingTreeBuildError::Mkdir {
-                    path: staging_path,
-                    source,
-                })?;
+                fs::create_dir(&staging_path)
+                    .map_err(|source| StagingTreeBuildError::Mkdir { path: staging_path, source })?;
             }
             TreeNodeKind::File { providing_mods } => {
                 let mod_index = *providing_mods
@@ -71,11 +69,7 @@ pub enum StagingTreeBuildError {
     #[error("failed to create directory '{path}': {source}")]
     Mkdir { path: PathBuf, source: io::Error },
     #[error("failed to create symlink '{link_path}' that points to '{source_path}': {source}")]
-    Symlink {
-        source_path: PathBuf,
-        link_path: PathBuf,
-        source: io::Error,
-    },
+    Symlink { source_path: PathBuf, link_path: PathBuf, source: io::Error },
     #[error(transparent)]
     TempDir(#[from] TempMountCreationError),
 }

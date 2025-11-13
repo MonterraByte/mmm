@@ -176,10 +176,7 @@ fn find_child_with_name(tree: &FileTree, parent: NodeId, name: &str) -> Option<N
 
 fn create_dir_node(mut parent: FileNodeMut, name: &str) -> NodeId {
     parent
-        .append(TreeNode {
-            name: name.into(),
-            kind: TreeNodeKind::Dir,
-        })
+        .append(TreeNode { name: name.into(), kind: TreeNodeKind::Dir })
         .node_id()
 }
 
@@ -187,9 +184,7 @@ fn create_file_node(mut parent: FileNodeMut, mod_index: ModIndex, name: &str) ->
     parent
         .append(TreeNode {
             name: name.into(),
-            kind: TreeNodeKind::File {
-                providing_mods: smallvec![mod_index],
-            },
+            kind: TreeNodeKind::File { providing_mods: smallvec![mod_index] },
         })
         .node_id()
 }
