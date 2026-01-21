@@ -14,6 +14,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 mod caps;
+mod instance;
 mod mount;
 mod namespace;
 mod staging;
@@ -26,8 +27,9 @@ use std::process::Command;
 use clap::Parser;
 use signal_hook::consts::SIGINT;
 
-use mmm_core::mods::{self, Mods};
+use mmm_core::file_tree;
 
+use crate::instance::DeployInstance;
 use crate::mount::{MountMethod, MountMethodChoice, OverlayMount};
 use crate::staging::build_staging_tree;
 
@@ -39,6 +41,8 @@ struct Args {
     game_path: PathBuf,
     #[arg(short = 'x', long)]
     exec: Option<PathBuf>,
+    #[arg(short, long)]
+    profile: Option<String>,
 }
 
 fn main() {
@@ -50,9 +54,9 @@ fn main() {
         std::process::exit(1);
     }
 
-    let mods = Mods::read(&args.instance_path).expect("failed reading mods");
-    let tree = mods::build_path_tree(&mods).unwrap();
-    ptree::print_tree(&mods::FileTreeDisplay::new(&tree, &mods)).unwrap();
+    let mods = DeployInstance::open(&args.instance_path, args.profile.as_deref()).expect("failed to open instance");
+    let tree = file_tree::build_path_tree(&mods).unwrap();
+    ptree::print_tree(&file_tree::FileTreeDisplay::new(&tree, &mods)).unwrap();
 
     if matches!(mount_method, MountMethod::UserNamespace) {
         namespace::enter_namespace().expect("failed to enter user namespace");

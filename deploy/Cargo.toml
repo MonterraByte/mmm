@@ -9,9 +9,10 @@ clap = { version = "4.5", features = ["derive"] }
 mmm-core = { path = "../core" }
 ptree = { workspace = true }
 rustix = { version = "1.1", features = ["fs", "mount", "process", "thread", "linux_5_11"] }
-signal-hook = { version = "0.3", default-features = false }
-tempfile = "3.22"
+signal-hook = { version = "0.4", default-features = false }
+tempfile = "3.24"
 thiserror = { workspace = true }
+typed-index-collections = { workspace = true }
 
 [lints]
 workspace = true

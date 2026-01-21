@@ -1,4 +1,4 @@
-// Copyright © 2025 Joaquim Monteiro
+// Copyright © 2025-2026 Joaquim Monteiro
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -15,4 +15,5 @@
 
 #![forbid(unsafe_code)]
 
-pub mod mods;
+pub mod file_tree;
+pub mod instance;

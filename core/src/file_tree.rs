@@ -1,4 +1,4 @@
-// Copyright © 2025 Joaquim Monteiro
+// Copyright © 2025-2026 Joaquim Monteiro
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -16,65 +16,14 @@
 use std::fs;
 use std::io;
 use std::mem;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use compact_str::CompactString;
 use nary_tree::{NodeId, NodeMut, Tree, TreeBuilder};
 use smallvec::{SmallVec, smallvec};
 use thiserror::Error;
 
-pub struct Mods {
-    dir: PathBuf,
-    names: Vec<String>,
-}
-
-impl Mods {
-    pub fn read(base_dir: &Path) -> Result<Self, io::Error> {
-        let dir = base_dir.join("mods").canonicalize()?;
-        let names: Vec<String> = {
-            let mut file = fs::File::open(base_dir.join("mods.json"))?;
-            serde_json::from_reader(&mut file)?
-        };
-
-        Ok(Self { dir, names })
-    }
-
-    #[must_use]
-    pub fn dir(&self) -> &Path {
-        &self.dir
-    }
-
-    #[must_use]
-    pub fn names(&self) -> &[String] {
-        &self.names
-    }
-
-    #[must_use]
-    pub fn name(&self, idx: ModIndex) -> Option<&str> {
-        self.names.get(idx.0 as usize).map(String::as_str)
-    }
-
-    #[must_use]
-    pub fn path(&self, idx: ModIndex) -> Option<PathBuf> {
-        self.names.get(idx.0 as usize).map(|name| self.dir.join(name))
-    }
-
-    pub fn enumerate(&self) -> impl Iterator<Item = (ModIndex, &str)> {
-        self.names
-            .iter()
-            .enumerate()
-            .map(|(i, m)| (ModIndex::from(i), m.as_str()))
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct ModIndex(u32);
-
-impl From<usize> for ModIndex {
-    fn from(value: usize) -> Self {
-        Self(u32::try_from(value).expect("mod count does not exceed 32 bits"))
-    }
-}
+use crate::instance::{Instance, ModDeclaration, ModEntryKind, ModIndex};
 
 type ModVec = SmallVec<[ModIndex; 4]>;
 const _: () = assert!(mem::size_of::<ModVec>() == 24);
@@ -107,7 +56,7 @@ pub enum TreeNodeKind {
 pub type FileTree = Tree<TreeNode>;
 type FileNodeMut<'a> = NodeMut<'a, TreeNode>;
 
-pub fn build_path_tree(mods: &Mods) -> Result<FileTree, TreeBuildError> {
+pub fn build_path_tree(instance: &impl Instance) -> Result<FileTree, TreeBuildError> {
     let mut tree = TreeBuilder::new()
         .with_root(TreeNode {
             name: CompactString::const_new("."),
@@ -116,9 +65,19 @@ pub fn build_path_tree(mods: &Mods) -> Result<FileTree, TreeBuildError> {
         .build();
     let root = tree.root_id().expect("has root node");
 
-    for (mod_index, mod_name) in mods.enumerate() {
-        let mod_dir = mods.dir().join(mod_name);
-        iter_dir(&mut tree, mod_index, mod_dir, root).map_err(|err| err.with_context(&tree, mod_name, mods))?;
+    for entry in instance.mod_order() {
+        if !entry.enabled {
+            continue;
+        }
+
+        let mod_index = entry.mod_index();
+        let mod_decl = &instance.mods()[mod_index];
+        if mod_decl.kind() != ModEntryKind::Mod {
+            continue;
+        }
+
+        let mod_dir = instance.mod_dir(mod_decl);
+        iter_dir(&mut tree, mod_index, mod_dir, root).map_err(|err| err.with_context(&tree, mod_decl, instance))?;
     }
 
     Ok(tree)
@@ -220,7 +179,7 @@ impl From<io::Error> for UnresolvedTreeBuildError {
 }
 
 impl UnresolvedTreeBuildError {
-    fn with_context(self, tree: &FileTree, mod_name: &str, mods: &Mods) -> TreeBuildError {
+    fn with_context(self, tree: &FileTree, mod_decl: &ModDeclaration, instance: &impl Instance) -> TreeBuildError {
         match self {
             Self::Io(err) => TreeBuildError::Io(err),
             Self::TypeMismatch(node_id) => {
@@ -232,22 +191,23 @@ impl UnresolvedTreeBuildError {
                 let node_path: PathBuf = ancestors.iter().rev().map(|node| &node.data().name).collect();
 
                 let mut conflicting_mod_names = Vec::new();
-                for mod_name in mods.names() {
-                    let path_to_check = {
-                        let mut p = mods.dir().to_owned();
-                        p.push(mod_name);
-                        p.join(&node_path)
-                    };
+                for other_mod in instance.mods() {
+                    if other_mod == mod_decl {
+                        continue;
+                    }
+
+                    let path_to_check = instance.mod_dir(other_mod).join(&node_path);
                     match fs::symlink_metadata(&path_to_check) {
                         Ok(m) => {
                             if m.is_dir() != expected_dir {
-                                conflicting_mod_names.push(mod_name);
+                                conflicting_mod_names.push(other_mod.name());
                             }
                         }
                         Err(err) => return TreeBuildError::Io(err), // TODO: log initial error
                     }
                 }
 
+                let mod_name = mod_decl.name();
                 let joined_conflicting_mod_names = itertools::join(conflicting_mod_names, "', '");
                 match &conflict_node.data().kind {
                     TreeNodeKind::Dir => TreeBuildError::TypeMismatch(format!(
@@ -269,19 +229,20 @@ pub enum TreeBuildError {
     #[error("{0}")]
     TypeMismatch(String),
 }
+
 #[derive(Clone)]
 pub struct FileTreeDisplay<'a> {
     tree: &'a FileTree,
-    mods: &'a Mods,
+    instance: &'a dyn Instance,
     current_node: NodeId,
 }
 
 impl<'a> FileTreeDisplay<'a> {
     #[must_use]
-    pub fn new(tree: &'a FileTree, mods: &'a Mods) -> FileTreeDisplay<'a> {
+    pub fn new(tree: &'a FileTree, instance: &'a dyn Instance) -> Self {
         Self {
             tree,
-            mods,
+            instance,
             current_node: tree.root_id().expect("has root node"),
         }
     }
@@ -297,12 +258,10 @@ impl ptree::TreeItem for FileTreeDisplay<'_> {
             TreeNodeKind::File { providing_mods } => {
                 write!(
                     f,
-                    "📄 {} ({})",
+                    "📄 {} ('{}')",
                     style.paint(&node.data().name),
                     itertools::join(
-                        providing_mods
-                            .iter()
-                            .map(|idx| self.mods.name(*idx).expect("mod exists")),
+                        providing_mods.iter().map(|idx| self.instance.mods()[*idx].name()),
                         "', '"
                     )
                 )
@@ -316,7 +275,7 @@ impl ptree::TreeItem for FileTreeDisplay<'_> {
             .children()
             .map(|node| FileTreeDisplay {
                 tree: self.tree,
-                mods: self.mods,
+                instance: self.instance,
                 current_node: node.node_id(),
             })
             .collect();
