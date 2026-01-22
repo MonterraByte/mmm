@@ -53,10 +53,9 @@ pub trait Instance {
 }
 
 /// An entry in the [mod list](Instance::mods).
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct ModDeclaration {
     name: CompactString,
-    #[serde(rename = "type", default, skip_serializing_if = "ModEntryKind::is_default")]
     kind: ModEntryKind,
 }
 
@@ -74,6 +73,89 @@ impl ModDeclaration {
     }
 }
 
+impl Serialize for ModDeclaration {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if matches!(self.kind, ModEntryKind::Mod) {
+            serializer.serialize_str(&self.name)
+        } else {
+            let mut entry = serializer.serialize_struct("ModDeclaration", 2)?;
+            entry.serialize_field("name", &self.name)?;
+            entry.serialize_field("type", &self.kind)?;
+            entry.end()
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ModDeclaration {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "lowercase")]
+        enum Field {
+            Name,
+            Type,
+        }
+        struct ModDeclarationVisitor;
+
+        impl<'de> Visitor<'de> for ModDeclarationVisitor {
+            type Value = ModDeclaration;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("string or struct ModDeclaration")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(ModDeclaration {
+                    name: CompactString::from(v),
+                    kind: ModEntryKind::Mod,
+                })
+            }
+
+            // Not the same as visit_str, as CompactString's `From<String>` takes ownership of the `String`.
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                Ok(ModDeclaration {
+                    name: CompactString::from(v),
+                    kind: ModEntryKind::Mod,
+                })
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut name = None;
+                let mut kind = None;
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Name => {
+                            if name.is_some() {
+                                return Err(de::Error::duplicate_field("index"));
+                            }
+                            name = Some(map.next_value()?);
+                        }
+                        Field::Type => {
+                            if kind.is_some() {
+                                return Err(de::Error::duplicate_field("type"));
+                            }
+                            kind = Some(map.next_value()?);
+                        }
+                    }
+                }
+                let name = name.ok_or_else(|| de::Error::missing_field("name"))?;
+                let kind = kind.ok_or_else(|| de::Error::missing_field("type"))?;
+                Ok(ModDeclaration { name, kind })
+            }
+        }
+
+        deserializer.deserialize_any(ModDeclarationVisitor)
+    }
+}
+
 /// The type of entry in the mod list.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ModEntryKind {
@@ -82,13 +164,6 @@ pub enum ModEntryKind {
     Mod,
     /// An entry for organizing the mod list. Not a real mod.
     Separator,
-}
-
-impl ModEntryKind {
-    #[allow(clippy::trivially_copy_pass_by_ref, reason = "required by serde")]
-    const fn is_default(&self) -> bool {
-        matches!(self, ModEntryKind::Mod)
-    }
 }
 
 pub const DEFAULT_PROFILE_NAME: CompactString = CompactString::const_new("default");
