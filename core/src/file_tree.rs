@@ -13,6 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+//! Functions for walking through mod files and representing them as a tree.
+
 use std::fs;
 use std::io;
 use std::mem;
@@ -29,6 +31,7 @@ type ModVec = SmallVec<[ModIndex; 4]>;
 const _: () = assert!(mem::size_of::<ModVec>() == 24);
 const _: () = assert!(mem::size_of::<SmallVec<[ModIndex; 5]>>() == 32);
 
+/// A node of a [`FileTree`].
 #[derive(Debug)]
 pub struct TreeNode {
     name: CompactString,
@@ -47,15 +50,26 @@ impl TreeNode {
     }
 }
 
+/// The type of node in a [`FileTree`].
 #[derive(Debug)]
 pub enum TreeNodeKind {
+    /// Node representing a directory.
     Dir,
-    File { providing_mods: ModVec },
+    /// Node representing a file.
+    File {
+        /// The [`ModIndex`]s of the mods that provide this file. The mods that appear first have higher priority.
+        providing_mods: ModVec,
+    },
 }
 
+/// A tree representing the combination of files from multiple mods.
+///
+/// Each node in the tree that represents a file contains the list of mods that provide that file,
+/// sorted from higher priority to lower.
 pub type FileTree = Tree<TreeNode>;
 type FileNodeMut<'a> = NodeMut<'a, TreeNode>;
 
+/// Builds a [`FileTree`] from all the enabled mods in the specified instance.
 pub fn build_path_tree(instance: &impl Instance) -> Result<FileTree, TreeBuildError> {
     let mut tree = TreeBuilder::new()
         .with_root(TreeNode {
@@ -222,6 +236,7 @@ impl UnresolvedTreeBuildError {
     }
 }
 
+/// Error type returned by [`build_path_tree`].
 #[derive(Debug, Error)]
 pub enum TreeBuildError {
     #[error("failed to read directory: {0}")]
@@ -230,6 +245,7 @@ pub enum TreeBuildError {
     TypeMismatch(String),
 }
 
+/// Structure to display [`FileTree`]s using [`ptree`].
 #[derive(Clone)]
 pub struct FileTreeDisplay<'a> {
     tree: &'a FileTree,
