@@ -27,7 +27,7 @@ use std::process::Command;
 use clap::Parser;
 use signal_hook::consts::SIGINT;
 
-use mmm_core::file_tree;
+use mmm_core::file_tree::{self, FileTreeDisplayKind};
 
 use crate::instance::DeployInstance;
 use crate::mount::{MountMethod, MountMethodChoice, OverlayMount};
@@ -56,7 +56,12 @@ fn main() {
 
     let mods = DeployInstance::open(&args.instance_path, args.profile.as_deref()).expect("failed to open instance");
     let tree = file_tree::build_path_tree(&mods).unwrap();
-    ptree::print_tree(&file_tree::FileTreeDisplay::new(&tree, &mods)).unwrap();
+    ptree::print_tree(&file_tree::FileTreeDisplay::new(
+        &tree,
+        &mods,
+        FileTreeDisplayKind::Conflicts,
+    ))
+    .unwrap();
 
     if matches!(mount_method, MountMethod::UserNamespace) {
         namespace::enter_namespace().expect("failed to enter user namespace");

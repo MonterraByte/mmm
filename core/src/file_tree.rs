@@ -251,15 +251,26 @@ pub struct FileTreeDisplay<'a> {
     tree: &'a FileTree,
     instance: &'a dyn Instance,
     current_node: NodeId,
+    kind: FileTreeDisplayKind,
+}
+
+/// Specifies what files are displayed by [`FileTreeDisplay`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum FileTreeDisplayKind {
+    /// Show all files.
+    All,
+    /// Only show files provided by multiple mods.
+    Conflicts,
 }
 
 impl<'a> FileTreeDisplay<'a> {
     #[must_use]
-    pub fn new(tree: &'a FileTree, instance: &'a dyn Instance) -> Self {
+    pub fn new(tree: &'a FileTree, instance: &'a dyn Instance, kind: FileTreeDisplayKind) -> Self {
         Self {
             tree,
             instance,
             current_node: tree.root_id().expect("has root node"),
+            kind,
         }
     }
 }
@@ -289,10 +300,23 @@ impl ptree::TreeItem for FileTreeDisplay<'_> {
         let node = self.tree.get(self.current_node).expect("node exists");
         let children: Vec<_> = node
             .children()
+            .filter(|node| {
+                if self.kind != FileTreeDisplayKind::Conflicts {
+                    return true;
+                }
+                match node.data().kind() {
+                    TreeNodeKind::Dir => node.traverse_pre_order().any(|node| match node.data().kind {
+                        TreeNodeKind::Dir => false,
+                        TreeNodeKind::File { ref providing_mods } => providing_mods.len() > 1,
+                    }),
+                    TreeNodeKind::File { providing_mods } => providing_mods.len() > 1,
+                }
+            })
             .map(|node| FileTreeDisplay {
                 tree: self.tree,
                 instance: self.instance,
                 current_node: node.node_id(),
+                kind: self.kind,
             })
             .collect();
         std::borrow::Cow::Owned(children)
