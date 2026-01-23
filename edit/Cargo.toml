@@ -1,0 +1,16 @@
+[package]
+name = "mmm-edit"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+cbor4ii = { workspace = true }
+compact_str = { workspace = true }
+mmm-core = { path = "../core" }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+typed-index-collections = { workspace = true }
+
+[lints]
+workspace = true
