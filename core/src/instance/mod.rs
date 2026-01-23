@@ -39,8 +39,8 @@ pub trait Instance {
     /// Each [`ModDeclaration`] in [`Self::mods`] must not have more than one
     /// corresponding entry in the mod order.
     ///
-    /// Entries that appear first have higher priority,
-    /// and their files override the files of entries that appear later.
+    /// Entries that appear last have higher priority,
+    /// and their files override the files of entries that appear earlier.
     fn mod_order(&self) -> &TiSlice<ModOrderIndex, ModOrderEntry>;
 
     /// Returns the absolute path to the specified mod's directory.

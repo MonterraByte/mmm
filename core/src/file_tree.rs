@@ -79,7 +79,7 @@ pub fn build_path_tree(instance: &impl Instance) -> Result<FileTree, TreeBuildEr
         .build();
     let root = tree.root_id().expect("has root node");
 
-    for entry in instance.mod_order() {
+    for entry in instance.mod_order().iter().rev() {
         if !entry.enabled {
             continue;
         }
