@@ -171,6 +171,18 @@ impl EditableInstance {
             }
         }
     }
+
+    /// Switches the current profile to the specified one.
+    ///
+    /// Does nothing if the profile doesn't exist.
+    pub fn switch_to_profile(&mut self, profile_name: CompactString) {
+        if !self.data.profiles.contains_key(&profile_name) {
+            error!("tried to switch to non-existent profile '{}'", profile_name);
+            return;
+        }
+        self.state.current_profile = profile_name;
+        self.add_missing_mods_to_mod_order();
+    }
 }
 
 struct EditorState {
