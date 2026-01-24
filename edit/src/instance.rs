@@ -20,7 +20,7 @@ use std::sync::mpsc::Sender;
 use compact_str::CompactString;
 use thiserror::Error;
 use tracing::{error, trace};
-use typed_index_collections::TiSlice;
+use typed_index_collections::{TiSlice, TiVec};
 
 use mmm_core::instance::data::{INSTANCE_DATA_FILE, InstanceData, InstanceDataOpenError};
 use mmm_core::instance::{
@@ -70,7 +70,11 @@ impl EditableInstance {
         }
 
         let write_queue = spawn_writer_thread(&dir).map_err(InstanceOpenError::SpawnWriterThread)?;
-        Ok(Self { dir, data, state, write_queue, changed: false })
+
+        let mut instance = Self { dir, data, state, write_queue, changed: false };
+        instance.add_missing_mods_to_mod_order();
+
+        Ok(instance)
     }
 
     /// Saves the state of the instance and queues writing it to disk.
@@ -129,6 +133,43 @@ impl Instance for EditableInstance {
             .get(&self.state.current_profile)
             .expect("profile exists")
             .mod_order
+    }
+}
+
+impl EditableInstance {
+    fn mod_order_mut(&mut self) -> &mut TiVec<ModOrderIndex, ModOrderEntry> {
+        &mut self
+            .data
+            .profiles
+            .get_mut(&self.state.current_profile)
+            .expect("profile exists")
+            .mod_order
+    }
+
+    /// Adds missing [`entries`](ModOrderEntry) to the current profile's mod order.
+    ///
+    /// This should be called when switching profiles, as we only add entries to the current profile
+    /// (and we don't know if the deserialized mod order is missing any entries).
+    fn add_missing_mods_to_mod_order(&mut self) {
+        let mods = self.mods().len();
+        let Some(mods_to_add) = mods.checked_sub(self.mod_order().len()) else {
+            // nothing to add
+            return;
+        };
+
+        let mod_order = self.mod_order_mut();
+        mod_order.reserve(mods_to_add);
+
+        let mut mods_present = vec![false; mods];
+        for order_entry in mod_order.iter() {
+            mods_present[Into::<usize>::into(order_entry.mod_index())] = true;
+        }
+
+        for (idx, present) in mods_present.iter().enumerate() {
+            if !present {
+                mod_order.push(ModOrderEntry::new(ModIndex::from(idx)));
+            }
+        }
     }
 }
 

@@ -190,6 +190,12 @@ pub struct ModOrderEntry {
 }
 
 impl ModOrderEntry {
+    /// Creates a new disabled `ModOrderEntry`.
+    #[must_use]
+    pub const fn new(index: ModIndex) -> Self {
+        Self { index, enabled: false }
+    }
+
     /// The index of the [`ModDeclaration`] represented by this entry in the [mod list](Instance::mods).
     #[must_use]
     pub const fn mod_index(&self) -> ModIndex {
