@@ -62,13 +62,13 @@ pub struct ModDeclaration {
 impl ModDeclaration {
     /// Returns the entry's name.
     #[must_use]
-    pub fn name(&self) -> &CompactString {
+    pub const fn name(&self) -> &CompactString {
         &self.name
     }
 
     /// Returns the entry's type.
     #[must_use]
-    pub fn kind(&self) -> ModEntryKind {
+    pub const fn kind(&self) -> ModEntryKind {
         self.kind
     }
 }
@@ -192,7 +192,7 @@ pub struct ModOrderEntry {
 impl ModOrderEntry {
     /// The index of the [`ModDeclaration`] represented by this entry in the [mod list](Instance::mods).
     #[must_use]
-    pub fn mod_index(&self) -> ModIndex {
+    pub const fn mod_index(&self) -> ModIndex {
         self.index
     }
 }

@@ -144,7 +144,7 @@ impl Default for EditorState {
 
 impl EditorState {
     #[must_use]
-    pub fn current_profile(&self) -> &CompactString {
+    pub const fn current_profile(&self) -> &CompactString {
         &self.current_profile
     }
 }

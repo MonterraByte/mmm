@@ -1,4 +1,4 @@
-// Copyright © 2025 Joaquim Monteiro
+// Copyright © 2025-2026 Joaquim Monteiro
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -173,7 +173,7 @@ pub enum TempMountUnmountError {
 struct UnmountWrapper<P: AsRef<Path>>(Option<P>);
 
 impl<P: AsRef<Path>> UnmountWrapper<P> {
-    pub fn new(path: P) -> Self {
+    pub const fn new(path: P) -> Self {
         Self(Some(path))
     }
 

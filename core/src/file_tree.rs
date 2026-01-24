@@ -40,12 +40,12 @@ pub struct TreeNode {
 
 impl TreeNode {
     #[must_use]
-    pub fn name(&self) -> &CompactString {
+    pub const fn name(&self) -> &CompactString {
         &self.name
     }
 
     #[must_use]
-    pub fn kind(&self) -> &TreeNodeKind {
+    pub const fn kind(&self) -> &TreeNodeKind {
         &self.kind
     }
 }
