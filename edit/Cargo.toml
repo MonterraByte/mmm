@@ -11,6 +11,7 @@ mmm-core = { path = "../core" }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 typed-index-collections = { workspace = true }
+unicode-segmentation = "1.12"
 
 [lints]
 workspace = true

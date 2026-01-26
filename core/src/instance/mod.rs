@@ -181,6 +181,14 @@ pub struct Profile {
     pub mod_order: TiVec<ModOrderIndex, ModOrderEntry>,
 }
 
+impl Profile {
+    /// Creates an empty `Profile` with the specified display name.
+    #[must_use]
+    pub const fn new(display_name: CompactString) -> Self {
+        Self { display_name, mod_order: TiVec::new() }
+    }
+}
+
 /// Represents a [`ModDeclaration`] in the [mod order](Instance::mod_order).
 #[derive(Copy, Clone, Debug)]
 pub struct ModOrderEntry {

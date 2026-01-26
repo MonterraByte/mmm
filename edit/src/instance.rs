@@ -18,14 +18,15 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 
-use compact_str::CompactString;
+use compact_str::{CompactString, format_compact};
 use thiserror::Error;
 use tracing::{error, trace};
 use typed_index_collections::{TiSlice, TiVec};
+use unicode_segmentation::UnicodeSegmentation;
 
 use mmm_core::instance::data::{INSTANCE_DATA_FILE, InstanceData, InstanceDataOpenError};
 use mmm_core::instance::{
-    DEFAULT_PROFILE, DEFAULT_PROFILE_NAME, Instance, ModDeclaration, ModIndex, ModOrderEntry, ModOrderIndex,
+    DEFAULT_PROFILE, DEFAULT_PROFILE_NAME, Instance, ModDeclaration, ModIndex, ModOrderEntry, ModOrderIndex, Profile,
 };
 
 use crate::util::move_multiple;
@@ -186,6 +187,38 @@ impl EditableInstance {
         self.add_missing_mods_to_mod_order();
     }
 
+    /// Creates a [`Profile`] with the specified name.
+    ///
+    /// If the name is too long, or if it's the same as another profile in the instance,
+    /// a new name is selected. This method returns the name that ends up being used.
+    ///
+    /// The profile's display name will always be set to the originally specified name,
+    /// even if this method picks a new name.
+    #[must_use]
+    pub fn add_profile(&mut self, name: &str) -> CompactString {
+        let name = name.trim();
+        let profile = Profile::new(CompactString::new(name));
+
+        // Limit names to 24 bytes to always fit in compact_str's small string optimization
+        const LIMIT: usize = 24;
+        let truncated_name = truncate_str(name, LIMIT);
+        let mut actual_name = truncated_name.clone();
+
+        let mut n: u32 = 0;
+        while self.data.profiles.contains_key(&actual_name) {
+            n = n.strict_add(1);
+            let n_str = format_compact!("{}", n);
+
+            actual_name = truncate_str(&truncated_name, LIMIT.strict_sub(n_str.len()));
+            actual_name.push_str(&n_str);
+        }
+        assert!(!actual_name.is_heap_allocated());
+
+        self.changed = true;
+        let _ = self.data.profiles.insert(actual_name.clone(), profile);
+        actual_name
+    }
+
     /// Toggles the enabled state of a mod in the mod order.
     pub fn toggle_mod_enabled(&mut self, index: ModOrderIndex) {
         self.changed = true;
@@ -219,4 +252,15 @@ impl EditorState {
     pub const fn current_profile(&self) -> &CompactString {
         &self.current_profile
     }
+}
+
+fn truncate_str(s: &str, len: usize) -> CompactString {
+    let mut truncated = CompactString::default();
+    for cluster in s.graphemes(true) {
+        if truncated.len() + cluster.len() > len {
+            break;
+        }
+        truncated.push_str(cluster);
+    }
+    truncated
 }
