@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use std::collections::HashSet;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
@@ -27,6 +28,7 @@ use mmm_core::instance::{
     DEFAULT_PROFILE, DEFAULT_PROFILE_NAME, Instance, ModDeclaration, ModIndex, ModOrderEntry, ModOrderIndex,
 };
 
+use crate::util::move_multiple;
 use crate::writer::{WriteRequest, WriteTarget, spawn_writer_thread};
 
 /// Implementation of [`Instance`] with editing support (for interactive applications).
@@ -182,6 +184,23 @@ impl EditableInstance {
         }
         self.state.current_profile = profile_name;
         self.add_missing_mods_to_mod_order();
+    }
+
+    /// Toggles the enabled state of a mod in the mod order.
+    pub fn toggle_mod_enabled(&mut self, index: ModOrderIndex) {
+        self.changed = true;
+        let entry = &mut self.mod_order_mut()[index];
+        entry.enabled = !entry.enabled;
+    }
+
+    /// Moves a set of mods to a specific index in the mod order.
+    pub fn move_mods(&mut self, mods_to_move: &HashSet<ModOrderIndex>, to: ModOrderIndex) {
+        self.changed = true;
+        move_multiple(
+            self.mod_order_mut().as_mut(),
+            mods_to_move.iter().map(|idx| (*idx).into()),
+            to.into(),
+        );
     }
 }
 

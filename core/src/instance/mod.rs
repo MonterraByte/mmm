@@ -341,6 +341,18 @@ macro_rules! custom_index {
                 self.0.fmt(f)
             }
         }
+
+        impl $name {
+            #[must_use]
+            pub fn saturating_add(self, other: impl Into<Self>) -> Self {
+                Self(self.0.saturating_add(other.into().0))
+            }
+
+            #[must_use]
+            pub fn saturating_sub(self, other: impl Into<Self>) -> Self {
+                Self(self.0.saturating_sub(other.into().0))
+            }
+        }
     };
 }
 
