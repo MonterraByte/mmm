@@ -24,6 +24,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use anyhow::Context;
 use clap::Parser;
 use signal_hook::consts::SIGINT;
 
@@ -45,7 +46,7 @@ struct Args {
     profile: Option<String>,
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     caps::init();
     let args = Args::parse();
     let mount_method = args.mount_method.to_mount_method();
@@ -54,51 +55,61 @@ fn main() {
         std::process::exit(1);
     }
 
-    let mods = DeployInstance::open(&args.instance_path, args.profile.as_deref()).expect("failed to open instance");
-    let tree = file_tree::build_path_tree(&mods).unwrap();
+    let mods = DeployInstance::open(&args.instance_path, args.profile.as_deref()).context("failed to open instance")?;
+    let tree = file_tree::build_path_tree(&mods).context("failed to build tree of mod files")?;
     ptree::print_tree(&file_tree::FileTreeDisplay::new(
         &tree,
         &mods,
         FileTreeDisplayKind::Conflicts,
     ))
-    .unwrap();
+    .context("failed to display file tree")?;
 
     if matches!(mount_method, MountMethod::UserNamespace) {
-        namespace::enter_namespace().expect("failed to enter user namespace");
+        namespace::enter_namespace().context("failed to enter user namespace")?;
     }
 
-    let staging_dir = build_staging_tree(&tree, &mods).expect("build staging tree");
+    let staging_dir = build_staging_tree(&tree, &mods).context("failed to stage mod files")?;
     println!("Built staging tree at '{}'", staging_dir.path().display());
 
-    let game_path = args.game_path.canonicalize().expect("canonicalize game path");
-    let overlay_mount = OverlayMount::new(staging_dir.path(), &game_path).expect("mount overlay");
+    let game_path = args
+        .game_path
+        .canonicalize()
+        .with_context(|| format!("failed to canonicalize game path '{}'", &args.game_path.display()))?;
+    let overlay_mount = OverlayMount::new(staging_dir.path(), &game_path).with_context(|| {
+        format!(
+            "failed to mount overlay '{}' at game path '{}'",
+            staging_dir.path().display(),
+            game_path.display()
+        )
+    })?;
     println!("Mounted overlay over {}", overlay_mount.path().display());
 
     if let Some(mut exe) = args.exec {
         if exe.is_relative() {
             exe = args.game_path.join(exe);
         }
-        run_game_and_wait(&exe);
+        run_game_and_wait(&exe).context("failed to run game and wait for it to quit")?;
     } else {
         println!("\nPress Control + C to unmount the overlay");
         wait_for_sigterm();
     }
 
-    overlay_mount.unmount().expect("unmounting failed");
-    staging_dir.unmount().expect("unmounting failed");
+    overlay_mount.unmount().context("failed to unmount overlay")?;
+    staging_dir.unmount().context("failed to unmount staging tmpfs")?;
     println!("\nUnmount successful");
+    Ok(())
 }
 
-fn run_game_and_wait(exe: &Path) {
+fn run_game_and_wait(exe: &Path) -> anyhow::Result<()> {
     let mut game = Command::new(exe)
         .current_dir(exe.parent().expect("executable has parent directory"))
         .spawn()
-        .expect("failed to execute game");
+        .with_context(|| format!("failed to run executable '{}'", exe.display()))?;
 
     let exe_name = exe.file_name().expect("executable has file name").display();
     println!("\nWaiting for {} to exit", exe_name);
 
-    let exit_status = game.wait().expect("waitpid failed");
+    let exit_status = game.wait().context("waitpid failed")?;
     match exit_status.code() {
         Some(code) => {
             if code != 0 {
@@ -107,6 +118,7 @@ fn run_game_and_wait(exe: &Path) {
         }
         None => eprintln!("{} was terminated by a signal", exe_name),
     }
+    Ok(())
 }
 
 fn wait_for_sigterm() {

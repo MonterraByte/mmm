@@ -5,6 +5,7 @@ edition = "2024"
 license = "GPL-3.0-or-later"
 
 [dependencies]
+anyhow = { workspace = true }
 clap = { version = "4.5", features = ["derive"] }
 mmm-core = { path = "../core" }
 ptree = { workspace = true }
