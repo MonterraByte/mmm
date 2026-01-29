@@ -79,9 +79,9 @@ impl Instance for DeployInstance {
 
 #[derive(Debug, Error)]
 pub enum DeployInstanceOpenError {
-    #[error("failed to canonicalize path '{dir}': {source}")]
+    #[error("failed to canonicalize path '{dir}'")]
     DirCanonicalize { source: io::Error, dir: PathBuf },
-    #[error("failed to get metadata of '{dir}': {source}")]
+    #[error("failed to get metadata of '{dir}'")]
     DirMetadata { source: io::Error, dir: PathBuf },
     #[error("instance has no profiles")]
     NoProfiles,
@@ -89,6 +89,6 @@ pub enum DeployInstanceOpenError {
     NotADirectory(PathBuf),
     #[error("profile '{0}' does not exist")]
     ProfileNotFound(String),
-    #[error(transparent)]
+    #[error("failed to open instance data file")]
     DataOpen(#[from] InstanceDataOpenError),
 }

@@ -239,7 +239,7 @@ impl UnresolvedTreeBuildError {
 /// Error type returned by [`build_path_tree`].
 #[derive(Debug, Error)]
 pub enum TreeBuildError {
-    #[error("failed to read directory: {0}")]
+    #[error("failed to read directory")]
     Io(#[from] io::Error),
     #[error("{0}")]
     TypeMismatch(String),

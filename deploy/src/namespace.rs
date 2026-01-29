@@ -62,22 +62,22 @@ fn write_file(path: &str, value: &str) -> Result<(), WriteFileError> {
 
 #[derive(Copy, Clone, Debug, Error)]
 pub enum EnterNamespaceError {
-    #[error("unshare failed: {0}")]
-    Unshare(Errno),
-    #[error("failed to write uid map: {0}")]
-    WriteUidMap(WriteFileError),
-    #[error("failed to write gid map: {0}")]
-    WriteGidMap(WriteFileError),
-    #[error("failed to write setgroups: {0}")]
-    WriteSetgroups(WriteFileError),
+    #[error("unshare failed")]
+    Unshare(#[source] Errno),
+    #[error("failed to write uid map")]
+    WriteUidMap(#[source] WriteFileError),
+    #[error("failed to write gid map")]
+    WriteGidMap(#[source] WriteFileError),
+    #[error("failed to write setgroups")]
+    WriteSetgroups(#[source] WriteFileError),
 }
 
 #[derive(Copy, Clone, Debug, Error)]
 pub enum WriteFileError {
-    #[error("open failed: {0}")]
-    Open(Errno),
-    #[error("write failed: {0}")]
-    Write(Errno),
+    #[error("open failed")]
+    Open(#[source] Errno),
+    #[error("write failed")]
+    Write(#[source] Errno),
     #[error("incomplete write ({0} bytes were not written)")]
     IncompleteWrite(usize),
 }

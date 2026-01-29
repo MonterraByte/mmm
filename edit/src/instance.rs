@@ -108,15 +108,15 @@ impl EditableInstance {
 /// Error type returned by [`EditableInstance::open`].
 #[derive(Debug, Error)]
 pub enum InstanceOpenError {
-    #[error("failed to canonicalize path '{dir}': {source}")]
+    #[error("failed to canonicalize path '{dir}'")]
     DirCanonicalize { source: io::Error, dir: PathBuf },
-    #[error("failed to get metadata of '{dir}': {source}")]
+    #[error("failed to get metadata of '{dir}'")]
     DirMetadata { source: io::Error, dir: PathBuf },
     #[error("'{0}' is not a directory")]
     NotADirectory(PathBuf),
-    #[error("err: {0}")]
+    #[error("failed to open instance data file")]
     DataOpen(#[from] InstanceDataOpenError),
-    #[error("failed to spawn writer thread: {0}")]
+    #[error("failed to spawn writer thread")]
     SpawnWriterThread(#[source] io::Error),
 }
 

@@ -69,10 +69,10 @@ pub fn build_staging_tree(tree: &FileTree, instance: &DeployInstance) -> Result<
 
 #[derive(Debug, Error)]
 pub enum StagingTreeBuildError {
-    #[error("failed to create directory '{path}': {source}")]
+    #[error("failed to create directory '{path}'")]
     Mkdir { path: PathBuf, source: io::Error },
-    #[error("failed to create symlink '{link_path}' that points to '{source_path}': {source}")]
+    #[error("failed to create symlink '{link_path}' that points to '{source_path}'")]
     Symlink { source_path: PathBuf, link_path: PathBuf, source: io::Error },
-    #[error(transparent)]
+    #[error("failed to create temporary directory to stage mod files in")]
     TempDir(#[from] TempMountCreationError),
 }

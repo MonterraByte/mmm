@@ -97,21 +97,21 @@ fn move_mount_fds(from_fd: &OwnedFd, to_fd: &OwnedFd) -> Result<(), MountError> 
 
 #[derive(Copy, Clone, Debug, Error)]
 pub enum MountError {
-    #[error("fsconfig_create failed: {0}")]
+    #[error("fsconfig_create failed")]
     FsConfigCreate(#[source] Errno),
-    #[error("fsconfig_set_* failed: {0}")]
+    #[error("fsconfig_set_* failed")]
     FsConfigSet(#[source] Errno),
-    #[error("fsmount failed: {0}")]
+    #[error("fsmount failed")]
     FsMount(#[source] Errno),
-    #[error("fsopen failed: {0}")]
+    #[error("fsopen failed")]
     FsOpen(#[source] Errno),
-    #[error("failed to fstat mount target directory: {0}")]
+    #[error("failed to fstat mount target directory")]
     Fstat(#[source] Errno),
-    #[error("move_mount failed: {0}")]
+    #[error("move_mount failed")]
     MoveMount(#[source] Errno),
     #[error("target directory is not owned by the user")]
     NotOwned,
-    #[error("failed to open mount target directory: {0}")]
+    #[error("failed to open mount target directory")]
     Open(#[source] Errno),
 }
 
@@ -155,17 +155,17 @@ impl TempMount {
 
 #[derive(Debug, Error)]
 pub enum TempMountCreationError {
-    #[error("failed to mount tmpfs: {0}")]
+    #[error("failed to mount tmpfs")]
     Mount(#[from] MountError),
-    #[error("failed to create temporary directory: {0}")]
+    #[error("failed to create temporary directory")]
     TempDir(#[source] io::Error),
 }
 
 #[derive(Debug, Error)]
 pub enum TempMountUnmountError {
-    #[error("failed to delete temporary directory: {0}")]
+    #[error("failed to delete temporary directory")]
     TempDir(#[source] io::Error),
-    #[error("failed to unmount tmpfs: {0}")]
+    #[error("failed to unmount tmpfs")]
     Unmount(#[source] Errno),
 }
 

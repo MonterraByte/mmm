@@ -169,11 +169,11 @@ pub enum InstanceDataVerificationError {
 /// Error type returned by [`InstanceData::from_file`].
 #[derive(Debug, Error)]
 pub enum InstanceDataOpenError {
-    #[error("failed to deserialize instance data: {0}")]
+    #[error("failed to deserialize instance data")]
     Deserialize(#[from] DecodeError<io::Error>),
-    #[error("instance data file contains invalid data: {0}")]
+    #[error("instance data file contains invalid data")]
     InvalidData(#[from] InstanceDataVerificationError),
-    #[error("failed to open instance data file: {0}")]
+    #[error("failed to open instance data file")]
     Open(#[source] io::Error),
     #[error("instance data file contains version {0} data, but version {INSTANCE_DATA_VERSION} is expected")]
     UnsupportedVersion(u32),
