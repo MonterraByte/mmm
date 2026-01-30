@@ -18,6 +18,7 @@
 pub mod data;
 
 use std::fmt;
+use std::iter::FusedIterator;
 use std::path::{Path, PathBuf};
 
 use compact_str::CompactString;
@@ -338,9 +339,21 @@ macro_rules! custom_index {
             }
         }
 
+        impl From<u32> for $name {
+            fn from(value: u32) -> Self {
+                Self(value)
+            }
+        }
+
         impl From<$name> for usize {
             fn from(value: $name) -> usize {
                 value.0 as usize
+            }
+        }
+
+        impl From<$name> for u32 {
+            fn from(value: $name) -> u32 {
+                value.0
             }
         }
 
@@ -359,6 +372,14 @@ macro_rules! custom_index {
             #[must_use]
             pub fn saturating_sub(self, other: impl Into<Self>) -> Self {
                 Self(self.0.saturating_sub(other.into().0))
+            }
+
+            pub fn inclusive_range_to(
+                self,
+                other: Self,
+            ) -> impl DoubleEndedIterator<Item = Self> + FusedIterator<Item = Self> {
+                let range = self.0..=other.0;
+                range.map(Self)
             }
         }
     };
