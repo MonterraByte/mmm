@@ -71,11 +71,12 @@ pub fn move_multiple<T>(slice: &mut [T], from: impl Iterator<Item = usize>, to: 
         vec
     };
 
-    let split_point = item_indices
-        .iter()
-        .enumerate()
-        .find(|(i, from)| **from > (to + i))
-        .map_or(item_indices.len(), |(i, _)| i);
+    let split_point = item_indices.partition_point(|from| {
+        let i = item_indices
+            .element_offset(from)
+            .expect("`from` is an element of `item_indices`");
+        *from <= (to + i)
+    });
     let (left, right) = item_indices.split_at(split_point);
 
     for (i, from) in left.iter().enumerate().rev() {
