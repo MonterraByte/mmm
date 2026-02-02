@@ -88,25 +88,6 @@ impl ModManagerUi {
                     self.instance.toggle_mod_enabled(idx);
                 }
             }
-            if ui.button("Move up").clicked()
-                && let Some(index) = self.last_selected
-            {
-                let new_index = index.saturating_sub(1u32);
-                self.instance.move_mods(&HashSet::from([index]), new_index);
-                self.last_selected = Some(new_index);
-                self.selection.clear();
-                self.selection.insert(new_index);
-            }
-            if ui.button("Move down").clicked()
-                && let Some(index) = self.last_selected
-            {
-                let max_index = ModOrderIndex::from(self.instance.mod_order().len().saturating_sub(1));
-                let new_index = index.saturating_add(1u32).min(max_index);
-                self.instance.move_mods(&HashSet::from([index]), new_index);
-                self.last_selected = Some(new_index);
-                self.selection.clear();
-                self.selection.insert(new_index);
-            }
         });
 
         ui.separator();
