@@ -15,6 +15,10 @@
 
 /// Moves multiple items in a slice to the specified index.
 ///
+/// When moving items to the right, the target index needs to be adjusted to compensate for the items shifted left,
+/// so that the items move still end up in between the items before and at the initial target index.
+/// The adjusted index is the value returned by this function.
+///
 /// # Implementation
 ///
 /// The naïve way to implement this would be to use [`Vec::remove`] and [`Vec::insert`]:
@@ -55,21 +59,28 @@
 /// With `from` set to `[1, 3, 8]`, and `to` set to `5`, we obtain:
 ///
 /// ```text
-/// ┌───────────────────┐
+///          to
+///           │
+/// ┌─────────V─────────┐
 /// │0 1 2 3 4 5 6 7 8 9│
 /// └──┼───┼─────────│──┘
-///    │   └─────┐   │
-///    └───────┐ │ ┌─┘
-/// ┌──────────V─V─V────┐
-/// │0 2 4 5 6 1 3 8 7 9│
+///    │   └─┐       │
+///    └───┐ │ ┌─────┘
+/// ┌──────V─V─V────────┐
+/// │0 2 4 1 3 8 5 6 7 9│
 /// └───────────────────┘
 /// ```
-pub fn move_multiple<T>(slice: &mut [T], from: impl Iterator<Item = usize>, to: usize) {
+pub fn move_multiple<T>(slice: &mut [T], from: impl Iterator<Item = usize>, to: usize) -> usize {
     let item_indices = {
         let mut vec: Vec<_> = from.collect();
         vec.sort_unstable();
         vec
     };
+
+    let offset = match item_indices.binary_search(&to) {
+        Ok(n) | Err(n) => n,
+    };
+    let to = to.saturating_sub(offset);
 
     let split_point = item_indices.partition_point(|from| {
         let i = item_indices
@@ -90,4 +101,6 @@ pub fn move_multiple<T>(slice: &mut [T], from: impl Iterator<Item = usize>, to: 
             slice.swap(idx, idx - 1);
         }
     }
+
+    to
 }

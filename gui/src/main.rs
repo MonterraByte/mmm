@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use anyhow::Context as _;
 use clap::Parser;
 use eframe::{App, Frame, NativeOptions, egui};
-use egui::{Align, CentralPanel, Context, Layout, ScrollArea, Sense, Ui};
+use egui::{Align, CentralPanel, Color32, Context, Layout, ScrollArea, Sense, Stroke, Ui};
 use egui_extras::{Column, TableBuilder};
 use tracing::{Level, error};
 use tracing_subscriber::EnvFilter;
@@ -117,7 +117,7 @@ impl ModManagerUi {
     }
 
     fn table_ui(&mut self, ui: &mut Ui) {
-        let modifiers = ui.input(|input| input.modifiers);
+        let (modifiers, pointer) = ui.input(|input| (input.modifiers, input.pointer.interact_pos()));
 
         let available_height = ui.available_height();
         let table = TableBuilder::new(ui)
@@ -129,8 +129,14 @@ impl ModManagerUi {
             .column(Column::auto())
             .min_scrolled_height(0.0)
             .max_scroll_height(available_height)
-            .sense(Sense::click());
+            .drag_to_scroll(false)
+            .sense(Sense::click_and_drag());
 
+        #[derive(Copy, Clone)]
+        struct ModDnDPayload;
+
+        let mut dnd_hover_line = None;
+        let mut dnd_drop_index = None;
         table
             .header(20.0, |mut header| {
                 header.col(|ui| {
@@ -203,12 +209,58 @@ impl ModManagerUi {
                             self.last_selected = Some(row_index);
                         }
                     }
+
+                    if response.drag_started() && !self.selection.contains(&row_index) {
+                        self.selection.clear();
+                        self.selection.insert(row_index);
+                        self.last_selected = Some(row_index);
+                    }
+
+                    response.dnd_set_drag_payload(ModDnDPayload);
+
+                    if response.dnd_hover_payload::<ModDnDPayload>().is_some()
+                        && let Some(pointer) = pointer
+                    {
+                        let rect = response.rect;
+                        if pointer.y <= rect.center().y {
+                            // Above us
+                            dnd_hover_line = Some((rect.x_range(), rect.top()));
+                        } else {
+                            // Below us
+                            dnd_hover_line = Some((rect.x_range(), rect.bottom()));
+                        }
+                    }
+
+                    if response.dnd_release_payload::<ModDnDPayload>().is_some()
+                        && let Some(pointer) = pointer
+                    {
+                        if pointer.y <= response.rect.center().y {
+                            dnd_drop_index = Some(row_index);
+                        } else {
+                            dnd_drop_index = Some(row_index.saturating_add(1u32));
+                        }
+                    }
                 });
 
                 if let Some(index) = entry_to_toggle {
                     self.instance.toggle_mod_enabled(index);
                 }
             });
+
+        if let Some((range, y)) = dnd_hover_line {
+            const STROKE: Stroke = Stroke { width: 2.0, color: Color32::WHITE };
+            ui.painter().hline(range, y, STROKE);
+        }
+
+        if let Some(drop_index) = dnd_drop_index {
+            let selection_len = self.selection.len();
+            let drop_index = self.instance.move_mods(&self.selection, drop_index);
+
+            // indices are no longer valid
+            self.selection.clear();
+            self.selection
+                .extend(drop_index.inclusive_range_to(drop_index.saturating_add(selection_len).saturating_sub(1u32)));
+        }
 
         self.instance.save();
     }

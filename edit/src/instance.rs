@@ -227,13 +227,14 @@ impl EditableInstance {
     }
 
     /// Moves a set of mods to a specific index in the mod order.
-    pub fn move_mods(&mut self, mods_to_move: &HashSet<ModOrderIndex>, to: ModOrderIndex) {
+    pub fn move_mods(&mut self, mods_to_move: &HashSet<ModOrderIndex>, to: ModOrderIndex) -> ModOrderIndex {
         self.changed = true;
         move_multiple(
             self.mod_order_mut().as_mut(),
             mods_to_move.iter().map(|idx| (*idx).into()),
             to.into(),
-        );
+        )
+        .into()
     }
 }
 
