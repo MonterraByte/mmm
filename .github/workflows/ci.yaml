@@ -5,7 +5,7 @@ jobs:
   fmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@beta
         with:
           components: rustfmt
       - uses: r7kamura/rust-problem-matchers@v1
@@ -17,7 +17,7 @@ jobs:
     env:
       RUSTFLAGS: -D warnings
     steps:
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@beta
       - uses: r7kamura/rust-problem-matchers@v1
       - uses: actions/checkout@v5
       - run: cargo check --workspace --all-targets
@@ -27,7 +27,7 @@ jobs:
     env:
       RUSTFLAGS: -D warnings
     steps:
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@beta
         with:
           components: clippy
       - uses: r7kamura/rust-problem-matchers@v1
