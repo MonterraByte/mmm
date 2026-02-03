@@ -13,12 +13,12 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use std::collections::HashSet;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 
 use compact_str::{CompactString, format_compact};
+use foldhash::HashSet;
 use thiserror::Error;
 use tracing::{error, trace};
 use typed_index_collections::{TiSlice, TiVec};

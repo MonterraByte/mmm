@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
+foldhash = { workspace = true }
 mmm-core = { path = "../core" }
 mmm-edit = { path = "../edit" }
 eframe = "0.33"

@@ -15,7 +15,6 @@
 
 #![forbid(unsafe_code)]
 
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 use anyhow::Context as _;
@@ -23,6 +22,7 @@ use clap::Parser;
 use eframe::{App, Frame, NativeOptions, egui};
 use egui::{Align, CentralPanel, Color32, Context, Layout, ScrollArea, Sense, Stroke, Ui};
 use egui_extras::{Column, TableBuilder};
+use foldhash::HashSet;
 use tracing::{Level, error};
 use tracing_subscriber::EnvFilter;
 

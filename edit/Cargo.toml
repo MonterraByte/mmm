@@ -7,6 +7,7 @@ license = "GPL-3.0-or-later"
 [dependencies]
 cbor4ii = { workspace = true }
 compact_str = { workspace = true }
+foldhash = { workspace = true }
 mmm-core = { path = "../core" }
 thiserror = { workspace = true }
 tracing = { workspace = true }
