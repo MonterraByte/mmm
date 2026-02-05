@@ -19,6 +19,7 @@ use std::path::PathBuf;
 
 use anyhow::Context as _;
 use clap::Parser;
+use eframe::egui::{Id, Modal, Popup, Sides};
 use eframe::{App, Frame, NativeOptions, egui};
 use egui::{Align, CentralPanel, Color32, Context, Layout, ScrollArea, Sense, Stroke, Ui};
 use egui_extras::{Column, TableBuilder};
@@ -60,6 +61,8 @@ pub struct ModManagerUi {
     instance: EditableInstance,
     selection: HashSet<ModOrderIndex>,
     last_selected: Option<ModOrderIndex>,
+    create_new_mod_modal_open: bool,
+    create_new_mod_modal_name: String,
 }
 
 impl ModManagerUi {
@@ -68,6 +71,8 @@ impl ModManagerUi {
             instance,
             selection: HashSet::default(),
             last_selected: None,
+            create_new_mod_modal_open: false,
+            create_new_mod_modal_name: String::new(),
         })
     }
 }
@@ -83,6 +88,13 @@ impl App for ModManagerUi {
 impl ModManagerUi {
     fn center_panel(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
+            let response = ui.button("Add mod");
+            Popup::menu(&response).show(|ui| {
+                if ui.button("Create empty mod").clicked() {
+                    self.create_new_mod_modal_open = true;
+                }
+            });
+
             if ui.button("Toggle selected").clicked() {
                 for idx in self.selection.iter().copied() {
                     self.instance.toggle_mod_enabled(idx);
@@ -95,6 +107,8 @@ impl ModManagerUi {
         ScrollArea::horizontal().show(ui, |ui| {
             self.table_ui(ui);
         });
+
+        self.create_empty_mod_modal(ui);
     }
 
     fn table_ui(&mut self, ui: &mut Ui) {
@@ -244,6 +258,41 @@ impl ModManagerUi {
         }
 
         self.instance.save();
+    }
+
+    fn create_empty_mod_modal(&mut self, ui: &mut Ui) {
+        if !self.create_new_mod_modal_open {
+            return;
+        }
+
+        let modal = Modal::new(Id::new("new_mod")).show(ui.ctx(), |ui| {
+            ui.set_width(250.0);
+            ui.heading("Create empty mod");
+            ui.label("Name:");
+            ui.text_edit_singleline(&mut self.create_new_mod_modal_name);
+
+            Sides::new().show(
+                ui,
+                |_| (),
+                |ui| {
+                    if ui.button("Cancel").clicked() {
+                        ui.close();
+                    }
+
+                    if ui.button("OK").clicked() {
+                        if let Err(err) = self.instance.create_mod(&self.create_new_mod_modal_name) {
+                            error!("failed to create mod '{}': {}", &self.create_new_mod_modal_name, err);
+                        }
+                        ui.close();
+                    }
+                },
+            );
+        });
+
+        if modal.should_close() {
+            self.create_new_mod_modal_open = false;
+            self.create_new_mod_modal_name.clear();
+        }
     }
 }
 

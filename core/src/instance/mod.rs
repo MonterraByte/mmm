@@ -72,6 +72,12 @@ impl ModDeclaration {
     pub const fn kind(&self) -> ModEntryKind {
         self.kind
     }
+
+    /// Creates a `ModDeclaration` for a mod with the specified name.
+    #[must_use]
+    pub const fn new(name: CompactString) -> Self {
+        Self { name, kind: ModEntryKind::Mod }
+    }
 }
 
 impl Serialize for ModDeclaration {
