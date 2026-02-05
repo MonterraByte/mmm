@@ -82,6 +82,8 @@ impl App for ModManagerUi {
         CentralPanel::default().show(ctx, |ui| {
             self.center_panel(ui);
         });
+
+        self.instance.save();
     }
 }
 
@@ -256,8 +258,6 @@ impl ModManagerUi {
             self.selection
                 .extend(drop_index.inclusive_range_to(drop_index.saturating_add(selection_len).saturating_sub(1u32)));
         }
-
-        self.instance.save();
     }
 
     fn create_empty_mod_modal(&mut self, ui: &mut Ui) {
