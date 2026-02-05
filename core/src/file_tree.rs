@@ -104,6 +104,7 @@ fn iter_dir(
     node: NodeId,
 ) -> Result<(), UnresolvedTreeBuildError> {
     let mut dirs_to_visit = vec![(dir, node)];
+    let mut root = true;
 
     while let Some((dir, node)) = dirs_to_visit.pop() {
         for entry in fs::read_dir(&dir)? {
@@ -111,6 +112,10 @@ fn iter_dir(
             let entry_name = entry.file_name().into_string().unwrap();
             let entry_type = entry.file_type()?;
             drop(entry);
+
+            if root && entry_name == ".git" {
+                continue;
+            }
 
             let entry_node = if let Some(child_node) = find_child_with_name(tree, node, &entry_name) {
                 add_to_existing_node(
@@ -131,6 +136,10 @@ fn iter_dir(
             if entry_type.is_dir() {
                 dirs_to_visit.push((dir.join(entry_name), entry_node));
             }
+        }
+
+        if root {
+            root = false;
         }
     }
 
