@@ -8,6 +8,7 @@ license = "GPL-3.0-or-later"
 cbor4ii = { workspace = true }
 compact_str = { workspace = true }
 foldhash = { workspace = true }
+git2 = "0.20"
 mmm-core = { path = "../core" }
 thiserror = { workspace = true }
 tracing = { workspace = true }

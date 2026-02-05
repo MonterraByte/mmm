@@ -31,6 +31,7 @@ use mmm_core::instance::{
 
 use crate::util::move_multiple;
 use crate::writer::{WriteRequest, WriteTarget, spawn_writer_thread};
+use crate::{Mod, ModInitError};
 
 /// Implementation of [`Instance`] with editing support (for interactive applications).
 pub struct EditableInstance {
@@ -219,6 +220,20 @@ impl EditableInstance {
         actual_name
     }
 
+    /// Creates a new mod with the specified name.
+    pub fn create_mod(&mut self, name: &str) -> Result<(), CreateModError> {
+        if self.mods().iter().any(|m| m.name() == name) {
+            return Err(CreateModError::AlreadyExists);
+        }
+        self.changed = true;
+
+        let mod_decl = ModDeclaration::new(name.into());
+        let idx = self.data.mods.push_and_get_key(mod_decl);
+        self.mod_order_mut().push(ModOrderEntry::new(idx));
+
+        Mod::init(self, idx).map_err(Into::into)
+    }
+
     /// Toggles the enabled state of a mod in the mod order.
     pub fn toggle_mod_enabled(&mut self, index: ModOrderIndex) {
         self.changed = true;
@@ -236,6 +251,14 @@ impl EditableInstance {
         )
         .into()
     }
+}
+
+#[derive(Debug, Error)]
+pub enum CreateModError {
+    #[error("there already exists a mod with the specified name")]
+    AlreadyExists,
+    #[error("failed to initialize mod directory")]
+    Init(#[from] ModInitError),
 }
 
 struct EditorState {

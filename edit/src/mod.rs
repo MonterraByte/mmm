@@ -1,4 +1,4 @@
-// Copyright © 2025-2026 Joaquim Monteiro
+// Copyright © 2026 Joaquim Monteiro
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -13,12 +13,25 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#![forbid(unsafe_code)]
+use thiserror::Error;
 
-mod instance;
-mod r#mod;
-mod util;
-mod writer;
+use mmm_core::instance::{Instance, ModIndex};
 
-pub use instance::{EditableInstance, InstanceOpenError};
-pub use r#mod::{Mod, ModInitError};
+use crate::EditableInstance;
+
+pub struct Mod;
+
+impl Mod {
+    /// Initializes a mod's directory, creating it if it doesn't exist.
+    pub fn init(instance: &EditableInstance, idx: ModIndex) -> Result<(), ModInitError> {
+        let mod_decl = &instance.mods()[idx];
+        let path = instance.mod_dir(mod_decl);
+
+        git2::Repository::init(&path)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("git init failed")]
+pub struct ModInitError(#[from] git2::Error);
