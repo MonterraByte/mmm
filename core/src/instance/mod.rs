@@ -44,6 +44,13 @@ pub trait Instance {
     /// and their files override the files of entries that appear earlier.
     fn mod_order(&self) -> &TiSlice<ModOrderIndex, ModOrderEntry>;
 
+    /// Convenience method that returns the [`ModDeclaration`] that corresponds to
+    /// the specified [`ModOrderIndex`] in the current instance profile.
+    fn mod_by_order_index(&self, idx: ModOrderIndex) -> &ModDeclaration {
+        let mod_index = self.mod_order()[idx].index;
+        &self.mods()[mod_index]
+    }
+
     /// Returns the absolute path to the specified mod's directory.
     fn mod_dir(&self, mod_declaration: &ModDeclaration) -> PathBuf {
         let mut path = self.dir().to_owned();
