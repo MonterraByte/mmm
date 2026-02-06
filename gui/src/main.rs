@@ -15,11 +15,14 @@
 
 #![forbid(unsafe_code)]
 
+mod background_task;
+
 use std::path::PathBuf;
+use std::sync::mpsc::Sender;
 
 use anyhow::Context as _;
 use clap::Parser;
-use eframe::egui::{Id, Modal, Popup, Sides};
+use eframe::egui::{Id, Modal, Popup, Sides, TopBottomPanel};
 use eframe::{App, Frame, NativeOptions, egui};
 use egui::{Align, CentralPanel, Color32, Context, Layout, ScrollArea, Sense, Stroke, Ui};
 use egui_extras::{Column, TableBuilder};
@@ -29,6 +32,8 @@ use tracing_subscriber::EnvFilter;
 
 use mmm_core::instance::{Instance, ModOrderIndex};
 use mmm_edit::EditableInstance;
+
+use crate::background_task::{BackgroundTask, StatusString, spawn_background_thread};
 
 const APP_NAME: &str = "zone.monterra.modmanager";
 
@@ -61,16 +66,23 @@ pub struct ModManagerUi {
     instance: EditableInstance,
     selection: HashSet<ModOrderIndex>,
     last_selected: Option<ModOrderIndex>,
+    background_task_queue: Sender<BackgroundTask>,
+    background_task_status: StatusString,
     create_new_mod_modal_open: bool,
     create_new_mod_modal_name: String,
 }
 
 impl ModManagerUi {
     fn new(instance: EditableInstance) -> Box<Self> {
+        let (background_task_queue, background_task_status) =
+            spawn_background_thread().expect("failed to spawn background task thread");
+
         Box::new(Self {
             instance,
             selection: HashSet::default(),
             last_selected: None,
+            background_task_queue,
+            background_task_status,
             create_new_mod_modal_open: false,
             create_new_mod_modal_name: String::new(),
         })
@@ -79,6 +91,10 @@ impl ModManagerUi {
 
 impl App for ModManagerUi {
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
+        TopBottomPanel::bottom(Id::new("status")).show(ctx, |ui| {
+            self.status_bar(ui);
+        });
+
         CentralPanel::default().show(ctx, |ui| {
             self.center_panel(ui);
         });
@@ -292,6 +308,17 @@ impl ModManagerUi {
         if modal.should_close() {
             self.create_new_mod_modal_open = false;
             self.create_new_mod_modal_name.clear();
+        }
+    }
+
+    fn status_bar(&mut self, ui: &mut Ui) {
+        let status = self.background_task_status.lock().expect("lock is not poisoned");
+        ui.label(status.as_str());
+    }
+
+    fn spawn_background_task(&mut self, task: BackgroundTask) {
+        if self.background_task_queue.send(task).is_err() {
+            error!("background task panicked");
         }
     }
 }
