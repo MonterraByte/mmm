@@ -234,6 +234,31 @@ impl EditableInstance {
         Mod::init(self, idx).map_err(Into::into)
     }
 
+    /// Removes the specified mod.
+    ///
+    /// The mod's files are not deleted. This function returns the path to the mod directory,
+    /// so that the caller can delete the files.
+    ///
+    /// `ModIndex`s greater or equal to `idx` are invalidated when this method is called,
+    /// as well as `ModOrderIndex`s greater or equal to the `ModOrderIndex` corresponding to
+    /// the removed mod in each profile's mod order.
+    pub fn remove_mod(&mut self, idx: ModIndex) -> PathBuf {
+        self.changed = true;
+
+        self.data.profiles.values_mut().for_each(|p| {
+            p.mod_order.retain_mut(|entry| {
+                let retain = entry.mod_index() != idx;
+                if entry.mod_index() > idx {
+                    entry.decrement_index();
+                }
+                retain
+            });
+        });
+
+        let mod_decl = self.data.mods.remove(idx);
+        self.mod_dir(&mod_decl)
+    }
+
     /// Toggles the enabled state of a mod in the mod order.
     pub fn toggle_mod_enabled(&mut self, index: ModOrderIndex) {
         self.changed = true;

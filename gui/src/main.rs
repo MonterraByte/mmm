@@ -17,20 +17,23 @@
 
 mod background_task;
 
+use std::ffi::OsStr;
+use std::fmt::Write;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 
 use anyhow::Context as _;
 use clap::Parser;
-use eframe::egui::{Id, Modal, Popup, Sides, TopBottomPanel};
+use eframe::egui::{Id, Modal, Popup, Sides, TextStyle, TextWrapMode, TopBottomPanel};
 use eframe::{App, Frame, NativeOptions, egui};
 use egui::{Align, CentralPanel, Color32, Context, Layout, ScrollArea, Sense, Stroke, Ui};
 use egui_extras::{Column, TableBuilder};
 use foldhash::HashSet;
-use tracing::{Level, error};
+use tracing::{Level, error, info};
 use tracing_subscriber::EnvFilter;
 
-use mmm_core::instance::{Instance, ModOrderIndex};
+use mmm_core::instance::{Instance, ModIndex, ModOrderIndex};
 use mmm_edit::EditableInstance;
 
 use crate::background_task::{BackgroundTask, StatusString, spawn_background_thread};
@@ -69,6 +72,7 @@ pub struct ModManagerUi {
     selection: HashSet<ModOrderIndex>,
     last_selected: Option<ModOrderIndex>,
     create_new_mod_modal: CreateNewModModal,
+    remove_selected_mods_modal: RemoveSelectedModsModal,
 }
 
 impl ModManagerUi {
@@ -83,6 +87,7 @@ impl ModManagerUi {
             selection: HashSet::default(),
             last_selected: None,
             create_new_mod_modal: CreateNewModModal::default(),
+            remove_selected_mods_modal: RemoveSelectedModsModal::default(),
         })
     }
 }
@@ -111,6 +116,10 @@ impl ModManagerUi {
                 }
             });
 
+            if ui.button("Remove selected").clicked() {
+                self.remove_selected_mods_modal.open(&self.instance, &self.selection);
+            }
+
             if ui.button("Toggle selected").clicked() {
                 for idx in self.selection.iter().copied() {
                     self.instance.toggle_mod_enabled(idx);
@@ -125,6 +134,7 @@ impl ModManagerUi {
         });
 
         self.create_empty_mod_modal(ui);
+        self.remove_selected_mods_modal(ui);
     }
 
     fn table_ui(&mut self, ui: &mut Ui) {
@@ -309,12 +319,45 @@ impl ModManagerUi {
         }
     }
 
+    fn remove_selected_mods_modal(&mut self, ui: &mut Ui) {
+        if !self.remove_selected_mods_modal.is_open() {
+            return;
+        }
+
+        let modal = Modal::new(Id::new("remove_mod")).show(ui.ctx(), |ui| {
+            ui.set_width(400.0);
+            self.remove_selected_mods_modal.display(&self.instance, ui);
+
+            Sides::new().show(
+                ui,
+                |_| (),
+                |ui| {
+                    if ui.button("Cancel").clicked() {
+                        ui.close();
+                    }
+
+                    if ui.button("Delete").clicked() {
+                        let task = self.remove_selected_mods_modal.do_task(&mut self.instance);
+                        self.spawn_background_task(task);
+                        self.selection.clear();
+                        self.last_selected = None;
+
+                        ui.close();
+                    }
+                },
+            );
+        });
+
+        if modal.should_close() {
+            self.remove_selected_mods_modal.close();
+        }
+    }
+
     fn status_bar(&mut self, ui: &mut Ui) {
         let status = self.background_task_status.lock().expect("lock is not poisoned");
         ui.label(status.as_str());
     }
 
-    #[allow(unused)]
     fn spawn_background_task(&self, task: BackgroundTask) {
         if self.background_task_queue.send(task).is_err() {
             error!("background task panicked");
@@ -326,6 +369,84 @@ impl ModManagerUi {
 struct CreateNewModModal {
     open: bool,
     input: String,
+}
+
+#[derive(Debug, Default)]
+struct RemoveSelectedModsModal(Vec<ModIndex>);
+
+impl RemoveSelectedModsModal {
+    fn open(&mut self, instance: &EditableInstance, selection: &HashSet<ModOrderIndex>) {
+        self.0.clear();
+        self.0
+            .extend(selection.iter().map(|idx| instance.mod_order()[*idx].mod_index()));
+        self.0.sort_unstable_by_key(|idx| instance.mods()[*idx].name());
+    }
+
+    fn is_open(&self) -> bool {
+        !self.0.is_empty()
+    }
+
+    fn close(&mut self) {
+        self.0.clear();
+    }
+
+    fn display(&self, instance: &EditableInstance, ui: &mut Ui) {
+        match self.0.len() {
+            0 => unreachable!(),
+            1 => {
+                ui.heading("Remove mod");
+
+                let mod_index = *self.0.first().expect("len is 1");
+                let mod_decl = &instance.mods()[mod_index];
+                ui.horizontal(|ui| {
+                    ui.label(mod_decl.name().as_str());
+                    ui.label("will be removed.");
+                });
+            }
+            len => {
+                ui.heading("Remove mods");
+                ui.label("The following mods will be removed:");
+                ui.add_space(4.0);
+
+                const TEXT_STYLE: TextStyle = TextStyle::Body;
+                let row_height = ui.text_style_height(&TEXT_STYLE);
+                ScrollArea::both().show_rows(ui, row_height, len, |ui, rows| {
+                    ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
+
+                    for idx in self.0.get(rows).expect("range is within bounds") {
+                        let mod_decl = &instance.mods()[*idx];
+                        ui.label(mod_decl.name().as_str());
+                    }
+                });
+            }
+        }
+    }
+
+    fn do_task(&mut self, instance: &mut EditableInstance) -> BackgroundTask {
+        // Sort indices from largest to smallest so that they can be removed in order without being invalidated.
+        self.0.sort_unstable_by(|a, b| b.cmp(a));
+        let paths: Vec<_> = self.0.iter().map(|idx| instance.remove_mod(*idx)).collect();
+        self.0.clear();
+
+        Box::new(move |status| {
+            for path in paths {
+                {
+                    let mut s = status.lock().expect("lock is not poisoned");
+                    s.clear();
+                    let _ = write!(
+                        s,
+                        "Deleting mod {}",
+                        path.file_name().unwrap_or(OsStr::new("?")).display()
+                    );
+                }
+
+                info!("removing mod directory '{}'", path.display());
+                if let Err(err) = fs::remove_dir_all(&path) {
+                    error!("failed to delete '{}': {}", path.display(), err);
+                }
+            }
+        })
+    }
 }
 
 fn tracing_setup() {
