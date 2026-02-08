@@ -223,6 +223,13 @@ impl ModOrderEntry {
     pub const fn mod_index(&self) -> ModIndex {
         self.index
     }
+
+    /// Decrements the mod index by one.
+    ///
+    /// For use when fixing up `ModIndex`s when removing a mod.
+    pub fn decrement_index(&mut self) {
+        self.index = self.index.saturating_sub(1u32);
+    }
 }
 
 /// A custom de(serializer) is used to save a few bytes in this type's representation.
