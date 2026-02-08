@@ -71,8 +71,7 @@ pub struct ModManagerUi {
     last_selected: Option<ModOrderIndex>,
     background_task_queue: Sender<BackgroundTask>,
     background_task_status: StatusString,
-    create_new_mod_modal_open: bool,
-    create_new_mod_modal_name: String,
+    create_new_mod_modal: CreateNewModModal,
     remove_selected_mods_modal: RemoveSelectedModsModal,
 }
 
@@ -87,8 +86,7 @@ impl ModManagerUi {
             last_selected: None,
             background_task_queue,
             background_task_status,
-            create_new_mod_modal_open: false,
-            create_new_mod_modal_name: String::new(),
+            create_new_mod_modal: CreateNewModModal::default(),
             remove_selected_mods_modal: RemoveSelectedModsModal::default(),
         })
     }
@@ -114,7 +112,7 @@ impl ModManagerUi {
             let response = ui.button("Add mod");
             Popup::menu(&response).show(|ui| {
                 if ui.button("Create empty mod").clicked() {
-                    self.create_new_mod_modal_open = true;
+                    self.create_new_mod_modal.open = true;
                 }
             });
 
@@ -287,7 +285,7 @@ impl ModManagerUi {
     }
 
     fn create_empty_mod_modal(&mut self, ui: &mut Ui) {
-        if !self.create_new_mod_modal_open {
+        if !self.create_new_mod_modal.open {
             return;
         }
 
@@ -295,7 +293,7 @@ impl ModManagerUi {
             ui.set_width(250.0);
             ui.heading("Create empty mod");
             ui.label("Name:");
-            ui.text_edit_singleline(&mut self.create_new_mod_modal_name);
+            ui.text_edit_singleline(&mut self.create_new_mod_modal.input);
 
             Sides::new().show(
                 ui,
@@ -306,8 +304,8 @@ impl ModManagerUi {
                     }
 
                     if ui.button("OK").clicked() {
-                        if let Err(err) = self.instance.create_mod(&self.create_new_mod_modal_name) {
-                            error!("failed to create mod '{}': {}", &self.create_new_mod_modal_name, err);
+                        if let Err(err) = self.instance.create_mod(&self.create_new_mod_modal.input) {
+                            error!("failed to create mod '{}': {}", &self.create_new_mod_modal.input, err);
                         }
                         ui.close();
                     }
@@ -316,8 +314,8 @@ impl ModManagerUi {
         });
 
         if modal.should_close() {
-            self.create_new_mod_modal_open = false;
-            self.create_new_mod_modal_name.clear();
+            self.create_new_mod_modal.open = false;
+            self.create_new_mod_modal.input.clear();
         }
     }
 
@@ -365,6 +363,12 @@ impl ModManagerUi {
             error!("background task panicked");
         }
     }
+}
+
+#[derive(Debug, Default)]
+struct CreateNewModModal {
+    open: bool,
+    input: String,
 }
 
 #[derive(Debug, Default)]
