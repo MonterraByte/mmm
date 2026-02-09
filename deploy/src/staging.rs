@@ -53,7 +53,10 @@ pub fn build_staging_tree(tree: &FileTree, instance: &DeployInstance) -> Result<
                     .first()
                     .expect("files are always provided by at least one mod");
                 let mod_decl = &instance.mods()[mod_index];
-                let source_path = instance.mod_dir(mod_decl).join(&relative_path);
+                let source_path = instance
+                    .mod_dir(mod_decl)
+                    .expect("separators don't have files")
+                    .join(&relative_path);
 
                 symlink(&source_path, &staging_path).map_err(|source| StagingTreeBuildError::Symlink {
                     source_path,

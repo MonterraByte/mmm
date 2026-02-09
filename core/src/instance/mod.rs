@@ -53,11 +53,15 @@ pub trait Instance {
     }
 
     /// Returns the absolute path to the specified mod's directory.
-    fn mod_dir(&self, mod_declaration: &ModDeclaration) -> PathBuf {
+    fn mod_dir(&self, mod_declaration: &ModDeclaration) -> Option<PathBuf> {
+        if mod_declaration.kind == ModEntryKind::Separator {
+            return None;
+        }
+
         let mut path = self.dir().to_owned();
         path.push("mods");
         path.push(mod_declaration.name());
-        path
+        Some(path)
     }
 }
 
@@ -107,7 +111,7 @@ impl Serialize for ModDeclaration {
     where
         S: Serializer,
     {
-        if matches!(self.kind, ModEntryKind::Mod) {
+        if self.kind == ModEntryKind::Mod {
             serializer.serialize_str(&self.name)
         } else {
             let mut entry = serializer.serialize_struct("ModDeclaration", 2)?;

@@ -239,12 +239,12 @@ impl EditableInstance {
     /// Removes the specified mod.
     ///
     /// The mod's files are not deleted. This function returns the path to the mod directory,
-    /// so that the caller can delete the files.
+    /// if applicable, so that the caller can delete the files.
     ///
     /// `ModIndex`s greater or equal to `idx` are invalidated when this method is called,
     /// as well as `ModOrderIndex`s greater or equal to the `ModOrderIndex` corresponding to
     /// the removed mod in each profile's mod order.
-    pub fn remove_mod(&mut self, idx: ModIndex) -> PathBuf {
+    pub fn remove_mod(&mut self, idx: ModIndex) -> Option<PathBuf> {
         self.changed = true;
 
         self.data.profiles.values_mut().for_each(|p| {

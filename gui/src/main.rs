@@ -427,7 +427,7 @@ impl RemoveSelectedModsModal {
     fn do_task(&mut self, instance: &mut EditableInstance) -> BackgroundTask {
         // Sort indices from largest to smallest so that they can be removed in order without being invalidated.
         self.0.sort_unstable_by(|a, b| b.cmp(a));
-        let paths: Vec<_> = self.0.iter().map(|idx| instance.remove_mod(*idx)).collect();
+        let paths: Vec<_> = self.0.iter().filter_map(|idx| instance.remove_mod(*idx)).collect();
         self.0.clear();
 
         Box::new(move |status| {

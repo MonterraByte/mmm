@@ -25,7 +25,10 @@ impl Mod {
     /// Initializes a mod's directory, creating it if it doesn't exist.
     pub fn init(instance: &EditableInstance, idx: ModIndex) -> Result<(), ModInitError> {
         let mod_decl = &instance.mods()[idx];
-        let path = instance.mod_dir(mod_decl);
+        let Some(path) = instance.mod_dir(mod_decl) else {
+            // it's a separator, do nothing
+            return Ok(());
+        };
 
         git2::Repository::init(&path)?;
         Ok(())

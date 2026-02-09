@@ -25,7 +25,7 @@ use nary_tree::{NodeId, NodeMut, Tree, TreeBuilder};
 use smallvec::{SmallVec, smallvec};
 use thiserror::Error;
 
-use crate::instance::{Instance, ModDeclaration, ModEntryKind, ModIndex};
+use crate::instance::{Instance, ModDeclaration, ModIndex};
 
 type ModVec = SmallVec<[ModIndex; 4]>;
 const _: () = assert!(mem::size_of::<ModVec>() == 24);
@@ -86,11 +86,11 @@ pub fn build_path_tree(instance: &impl Instance) -> Result<FileTree, TreeBuildEr
 
         let mod_index = entry.mod_index();
         let mod_decl = &instance.mods()[mod_index];
-        if mod_decl.kind() != ModEntryKind::Mod {
+        let Some(mod_dir) = instance.mod_dir(mod_decl) else {
+            // skip separators
             continue;
-        }
+        };
 
-        let mod_dir = instance.mod_dir(mod_decl);
         iter_dir(&mut tree, mod_index, mod_dir, root).map_err(|err| err.with_context(&tree, mod_decl, instance))?;
     }
 
@@ -219,7 +219,10 @@ impl UnresolvedTreeBuildError {
                         continue;
                     }
 
-                    let path_to_check = instance.mod_dir(other_mod).join(&node_path);
+                    let path_to_check = instance
+                        .mod_dir(other_mod)
+                        .expect("separators don't have files")
+                        .join(&node_path);
                     match fs::symlink_metadata(&path_to_check) {
                         Ok(m) => {
                             if m.is_dir() != expected_dir {
