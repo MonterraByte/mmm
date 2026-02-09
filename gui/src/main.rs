@@ -33,7 +33,7 @@ use foldhash::HashSet;
 use tracing::{Level, error, info};
 use tracing_subscriber::EnvFilter;
 
-use mmm_core::instance::{Instance, ModIndex, ModOrderIndex};
+use mmm_core::instance::{Instance, ModDeclaration, ModIndex, ModOrderIndex};
 use mmm_edit::EditableInstance;
 
 use crate::background_task::{BackgroundTask, StatusString, spawn_background_thread};
@@ -303,12 +303,14 @@ impl ModManagerUi {
                         ui.close();
                     }
 
-                    if ui.button("OK").clicked() {
-                        if let Err(err) = self.instance.create_mod(&self.create_new_mod_modal.input) {
-                            error!("failed to create mod '{}': {}", &self.create_new_mod_modal.input, err);
+                    ui.add_enabled_ui(ModDeclaration::is_name_valid(&self.create_new_mod_modal.input), |ui| {
+                        if ui.button("OK").clicked() {
+                            if let Err(err) = self.instance.create_mod(&self.create_new_mod_modal.input) {
+                                error!("failed to create mod '{}': {}", &self.create_new_mod_modal.input, err);
+                            }
+                            ui.close();
                         }
-                        ui.close();
-                    }
+                    });
                 },
             );
         });

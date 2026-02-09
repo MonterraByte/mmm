@@ -26,7 +26,8 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use mmm_core::instance::data::{INSTANCE_DATA_FILE, InstanceData, InstanceDataOpenError};
 use mmm_core::instance::{
-    DEFAULT_PROFILE, DEFAULT_PROFILE_NAME, Instance, ModDeclaration, ModIndex, ModOrderEntry, ModOrderIndex, Profile,
+    DEFAULT_PROFILE, DEFAULT_PROFILE_NAME, Instance, InvalidModNameError, ModDeclaration, ModEntryKind, ModIndex,
+    ModOrderEntry, ModOrderIndex, Profile,
 };
 
 use crate::util::move_multiple;
@@ -225,9 +226,10 @@ impl EditableInstance {
         if self.mods().iter().any(|m| m.name() == name) {
             return Err(CreateModError::AlreadyExists);
         }
-        self.changed = true;
 
-        let mod_decl = ModDeclaration::new(name.into());
+        let mod_decl = ModDeclaration::new(name.into(), ModEntryKind::Mod)?;
+
+        self.changed = true;
         let idx = self.data.mods.push_and_get_key(mod_decl);
         self.mod_order_mut().push(ModOrderEntry::new(idx));
 
@@ -282,6 +284,8 @@ impl EditableInstance {
 pub enum CreateModError {
     #[error("there already exists a mod with the specified name")]
     AlreadyExists,
+    #[error(transparent)]
+    InvalidName(#[from] InvalidModNameError),
     #[error("failed to initialize mod directory")]
     Init(#[from] ModInitError),
 }

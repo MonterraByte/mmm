@@ -25,6 +25,7 @@ use compact_str::CompactString;
 use serde::de::{self, MapAccess, Unexpected, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use thiserror::Error;
 use typed_index_collections::{TiSlice, TiVec};
 
 /// Trait that represents an open mmm instance.
@@ -81,11 +82,25 @@ impl ModDeclaration {
     }
 
     /// Creates a `ModDeclaration` for a mod with the specified name.
+    pub fn new(name: CompactString, kind: ModEntryKind) -> Result<Self, InvalidModNameError> {
+        Self::is_name_valid(&name)
+            .then_some(Self { name, kind })
+            .ok_or(InvalidModNameError)
+    }
+
     #[must_use]
-    pub const fn new(name: CompactString) -> Self {
-        Self { name, kind: ModEntryKind::Mod }
+    pub fn is_name_valid(name: &str) -> bool {
+        !name.is_empty()
+            && name.len() == name.trim().len()
+            && !name.contains(['\0', '/'])
+            && name != "."
+            && name != ".."
     }
 }
+
+#[derive(Debug, Error)]
+#[error("the specified mod name is invalid")]
+pub struct InvalidModNameError;
 
 impl Serialize for ModDeclaration {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -115,6 +130,7 @@ impl<'de> Deserialize<'de> for ModDeclaration {
             Type,
         }
         struct ModDeclarationVisitor;
+        const INVALID_NAME: &str = "invalid name: expected a string that is not empty, does not contain whitespace at the beginning or end, does not contain NUL or /, and is not equal to . or ..";
 
         impl<'de> Visitor<'de> for ModDeclarationVisitor {
             type Value = ModDeclaration;
@@ -124,18 +140,14 @@ impl<'de> Deserialize<'de> for ModDeclaration {
             }
 
             fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
-                Ok(ModDeclaration {
-                    name: CompactString::from(v),
-                    kind: ModEntryKind::Mod,
-                })
+                ModDeclaration::new(CompactString::from(v), ModEntryKind::Mod)
+                    .map_err(|_| de::Error::custom(INVALID_NAME))
             }
 
             // Not the same as visit_str, as CompactString's `From<String>` takes ownership of the `String`.
             fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
-                Ok(ModDeclaration {
-                    name: CompactString::from(v),
-                    kind: ModEntryKind::Mod,
-                })
+                ModDeclaration::new(CompactString::from(v), ModEntryKind::Mod)
+                    .map_err(|_| de::Error::custom(INVALID_NAME))
             }
 
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
@@ -162,7 +174,7 @@ impl<'de> Deserialize<'de> for ModDeclaration {
                 }
                 let name = name.ok_or_else(|| de::Error::missing_field("name"))?;
                 let kind = kind.ok_or_else(|| de::Error::missing_field("type"))?;
-                Ok(ModDeclaration { name, kind })
+                ModDeclaration::new(name, kind).map_err(|_| de::Error::custom(INVALID_NAME))
             }
         }
 
