@@ -33,7 +33,7 @@ use foldhash::HashSet;
 use tracing::{Level, error, info};
 use tracing_subscriber::EnvFilter;
 
-use mmm_core::instance::{Instance, ModDeclaration, ModIndex, ModOrderIndex};
+use mmm_core::instance::{Instance, ModDeclaration, ModEntryKind, ModIndex, ModOrderIndex};
 use mmm_edit::EditableInstance;
 
 use crate::background_task::{BackgroundTask, StatusString, spawn_background_thread};
@@ -190,16 +190,25 @@ impl ModManagerUi {
 
                     row.set_selected(self.selection.contains(&row_index));
 
-                    let mut enabled = order_entry.enabled;
-                    row.col(|ui| {
-                        ui.checkbox(&mut enabled, ());
-                    });
-                    if enabled != order_entry.enabled {
-                        entry_to_toggle = Some(row_index);
+                    if mod_decl.kind() == ModEntryKind::Mod {
+                        let mut enabled = order_entry.enabled;
+                        row.col(|ui| {
+                            ui.checkbox(&mut enabled, ());
+                        });
+                        if enabled != order_entry.enabled {
+                            entry_to_toggle = Some(row_index);
+                        }
+                    } else {
+                        row.col(|_| {});
                     }
 
                     row.col(|ui| {
-                        ui.label(mod_decl.name().as_str());
+                        let name = mod_decl.name().as_str();
+                        if mod_decl.kind() == ModEntryKind::Separator {
+                            ui.strong(name);
+                        } else {
+                            ui.label(name);
+                        }
                     });
 
                     row.col(|ui| {
@@ -300,7 +309,11 @@ impl ModManagerUi {
 
         let modal = Modal::new(Id::new("new_mod")).show(ui.ctx(), |ui| {
             ui.set_width(250.0);
-            ui.heading("Create empty mod");
+            ui.heading(if self.create_new_mod_modal.kind == ModEntryKind::Separator {
+                "Create separator"
+            } else {
+                "Create empty mod"
+            });
             ui.label("Name:");
             let text_exit = ui.text_edit_singleline(&mut self.create_new_mod_modal.input);
             let mut accepted = text_exit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
@@ -345,10 +358,14 @@ impl ModManagerUi {
 
         let modal = Modal::new(Id::new("rename_mod")).show(ui.ctx(), |ui| {
             ui.set_width(250.0);
-            ui.heading("Rename mod");
 
             let mod_idx = self.instance.mod_order()[idx].mod_index();
             let mod_decl = &self.instance.mods()[mod_idx];
+            ui.heading(if mod_decl.kind() == ModEntryKind::Separator {
+                "Rename separator"
+            } else {
+                "Rename mod"
+            });
             ui.horizontal(|ui| {
                 ui.label("New name for");
                 ui.label(mod_decl.name().as_str());
@@ -482,10 +499,14 @@ impl RemoveSelectedModsModal {
         match self.0.len() {
             0 => unreachable!(),
             1 => {
-                ui.heading("Remove mod");
-
                 let mod_index = *self.0.first().expect("len is 1");
                 let mod_decl = &instance.mods()[mod_index];
+
+                ui.heading(if mod_decl.kind() == ModEntryKind::Separator {
+                    "Remove separator"
+                } else {
+                    "Remove mod"
+                });
                 ui.horizontal(|ui| {
                     ui.label(mod_decl.name().as_str());
                     ui.label("will be removed.");
