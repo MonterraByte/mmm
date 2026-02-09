@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
@@ -261,6 +262,22 @@ impl EditableInstance {
         self.mod_dir(&mod_decl)
     }
 
+    /// Renames the specified mod.
+    pub fn rename_mod(&mut self, idx: ModIndex, new_name: &str) -> Result<(), RenameModError> {
+        if self.data.mods.iter().any(|m| m.name() == new_name) {
+            return Err(RenameModError::AlreadyExists);
+        }
+
+        let mod_decl = &self.data.mods[idx];
+        if let Some(from) = self.mod_dir(mod_decl) {
+            let to = from.with_file_name(new_name);
+            fs::rename(from, to)?;
+        }
+
+        self.data.mods[idx] = ModDeclaration::new(new_name.into(), mod_decl.kind())?;
+        Ok(())
+    }
+
     /// Toggles the enabled state of a mod in the mod order.
     pub fn toggle_mod_enabled(&mut self, index: ModOrderIndex) {
         self.changed = true;
@@ -288,6 +305,16 @@ pub enum CreateModError {
     InvalidName(#[from] InvalidModNameError),
     #[error("failed to initialize mod directory")]
     Init(#[from] ModInitError),
+}
+
+#[derive(Debug, Error)]
+pub enum RenameModError {
+    #[error("there already exists a mod with the specified name")]
+    AlreadyExists,
+    #[error(transparent)]
+    InvalidName(#[from] InvalidModNameError),
+    #[error("failed to rename mod directory")]
+    Io(#[from] io::Error),
 }
 
 struct EditorState {

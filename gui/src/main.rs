@@ -72,6 +72,7 @@ pub struct ModManagerUi {
     selection: HashSet<ModOrderIndex>,
     last_selected: Option<ModOrderIndex>,
     create_new_mod_modal: CreateNewModModal,
+    rename_mod_modal: RenameModModal,
     remove_selected_mods_modal: RemoveSelectedModsModal,
 }
 
@@ -87,6 +88,7 @@ impl ModManagerUi {
             selection: HashSet::default(),
             last_selected: None,
             create_new_mod_modal: CreateNewModModal::default(),
+            rename_mod_modal: RenameModModal::default(),
             remove_selected_mods_modal: RemoveSelectedModsModal::default(),
         })
     }
@@ -116,6 +118,12 @@ impl ModManagerUi {
                 }
             });
 
+            if ui.button("Rename selected").clicked()
+                && let Some(selection) = self.get_single_selected_mod()
+            {
+                self.rename_mod_modal.open(&self.instance, selection);
+            }
+
             if ui.button("Remove selected").clicked() {
                 self.remove_selected_mods_modal.open(&self.instance, &self.selection);
             }
@@ -134,6 +142,7 @@ impl ModManagerUi {
         });
 
         self.create_empty_mod_modal(ui);
+        self.rename_mod_modal(ui);
         self.remove_selected_mods_modal(ui);
     }
 
@@ -321,6 +330,55 @@ impl ModManagerUi {
         }
     }
 
+    fn rename_mod_modal(&mut self, ui: &mut Ui) {
+        if !self.rename_mod_modal.open {
+            return;
+        }
+
+        let Some(idx) = self.get_single_selected_mod() else {
+            self.rename_mod_modal.open = false;
+            return;
+        };
+
+        let modal = Modal::new(Id::new("rename_mod")).show(ui.ctx(), |ui| {
+            ui.set_width(250.0);
+            ui.heading("Rename mod");
+
+            let mod_idx = self.instance.mod_order()[idx].mod_index();
+            let mod_decl = &self.instance.mods()[mod_idx];
+            ui.horizontal(|ui| {
+                ui.label("New name for");
+                ui.label(mod_decl.name().as_str());
+                ui.label(":");
+            });
+            ui.text_edit_singleline(&mut self.rename_mod_modal.input);
+
+            Sides::new().show(
+                ui,
+                |_| (),
+                |ui| {
+                    if ui.button("Cancel").clicked() {
+                        ui.close();
+                    }
+
+                    ui.add_enabled_ui(ModDeclaration::is_name_valid(&self.rename_mod_modal.input), |ui| {
+                        if ui.button("OK").clicked() {
+                            if let Err(err) = self.instance.rename_mod(mod_idx, &self.rename_mod_modal.input) {
+                                error!("failed to rename mod to '{}': {}", &self.rename_mod_modal.input, err);
+                            }
+                            ui.close();
+                        }
+                    });
+                },
+            );
+        });
+
+        if modal.should_close() {
+            self.rename_mod_modal.open = false;
+            self.rename_mod_modal.input.clear();
+        }
+    }
+
     fn remove_selected_mods_modal(&mut self, ui: &mut Ui) {
         if !self.remove_selected_mods_modal.is_open() {
             return;
@@ -365,12 +423,34 @@ impl ModManagerUi {
             error!("background task panicked");
         }
     }
+
+    fn get_single_selected_mod(&self) -> Option<ModOrderIndex> {
+        if self.selection.len() != 1 {
+            return None;
+        }
+        self.selection.iter().next().copied()
+    }
 }
 
 #[derive(Debug, Default)]
 struct CreateNewModModal {
     open: bool,
     input: String,
+}
+
+#[derive(Debug, Default)]
+struct RenameModModal {
+    open: bool,
+    input: String,
+}
+
+impl RenameModModal {
+    fn open(&mut self, instance: &EditableInstance, selected_mod: ModOrderIndex) {
+        let mod_decl = instance.mod_by_order_index(selected_mod);
+        self.input.clear();
+        self.input.push_str(mod_decl.name());
+        self.open = true;
+    }
 }
 
 #[derive(Debug, Default)]
