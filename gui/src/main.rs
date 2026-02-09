@@ -302,7 +302,8 @@ impl ModManagerUi {
             ui.set_width(250.0);
             ui.heading("Create empty mod");
             ui.label("Name:");
-            ui.text_edit_singleline(&mut self.create_new_mod_modal.input);
+            let text_exit = ui.text_edit_singleline(&mut self.create_new_mod_modal.input);
+            let mut accepted = text_exit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
 
             Sides::new().show(
                 ui,
@@ -313,15 +314,17 @@ impl ModManagerUi {
                     }
 
                     ui.add_enabled_ui(ModDeclaration::is_name_valid(&self.create_new_mod_modal.input), |ui| {
-                        if ui.button("OK").clicked() {
-                            if let Err(err) = self.instance.create_mod(&self.create_new_mod_modal.input) {
-                                error!("failed to create mod '{}': {}", &self.create_new_mod_modal.input, err);
-                            }
-                            ui.close();
-                        }
+                        accepted |= ui.button("OK").clicked();
                     });
                 },
             );
+
+            if accepted && ModDeclaration::is_name_valid(&self.create_new_mod_modal.input) {
+                if let Err(err) = self.instance.create_mod(&self.create_new_mod_modal.input) {
+                    error!("failed to create mod '{}': {}", &self.create_new_mod_modal.input, err);
+                }
+                ui.close();
+            }
         });
 
         if modal.should_close() {
@@ -351,7 +354,8 @@ impl ModManagerUi {
                 ui.label(mod_decl.name().as_str());
                 ui.label(":");
             });
-            ui.text_edit_singleline(&mut self.rename_mod_modal.input);
+            let text_exit = ui.text_edit_singleline(&mut self.rename_mod_modal.input);
+            let mut accepted = text_exit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
 
             Sides::new().show(
                 ui,
@@ -362,15 +366,17 @@ impl ModManagerUi {
                     }
 
                     ui.add_enabled_ui(ModDeclaration::is_name_valid(&self.rename_mod_modal.input), |ui| {
-                        if ui.button("OK").clicked() {
-                            if let Err(err) = self.instance.rename_mod(mod_idx, &self.rename_mod_modal.input) {
-                                error!("failed to rename mod to '{}': {}", &self.rename_mod_modal.input, err);
-                            }
-                            ui.close();
-                        }
+                        accepted |= ui.button("OK").clicked();
                     });
                 },
             );
+
+            if accepted && ModDeclaration::is_name_valid(&self.rename_mod_modal.input) {
+                if let Err(err) = self.instance.rename_mod(mod_idx, &self.rename_mod_modal.input) {
+                    error!("failed to rename mod to '{}': {}", &self.rename_mod_modal.input, err);
+                }
+                ui.close();
+            }
         });
 
         if modal.should_close() {
