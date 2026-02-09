@@ -223,12 +223,12 @@ impl EditableInstance {
     }
 
     /// Creates a new mod with the specified name.
-    pub fn create_mod(&mut self, name: &str) -> Result<(), CreateModError> {
+    pub fn create_mod(&mut self, name: &str, kind: ModEntryKind) -> Result<(), CreateModError> {
         if self.mods().iter().any(|m| m.name() == name) {
             return Err(CreateModError::AlreadyExists);
         }
 
-        let mod_decl = ModDeclaration::new(name.into(), ModEntryKind::Mod)?;
+        let mod_decl = ModDeclaration::new(name.into(), kind)?;
 
         self.changed = true;
         let idx = self.data.mods.push_and_get_key(mod_decl);

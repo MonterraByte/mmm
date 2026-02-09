@@ -114,6 +114,12 @@ impl ModManagerUi {
             let response = ui.button("Add mod");
             Popup::menu(&response).show(|ui| {
                 if ui.button("Create empty mod").clicked() {
+                    self.create_new_mod_modal.kind = ModEntryKind::Mod;
+                    self.create_new_mod_modal.open = true;
+                }
+
+                if ui.button("Create separator").clicked() {
+                    self.create_new_mod_modal.kind = ModEntryKind::Separator;
                     self.create_new_mod_modal.open = true;
                 }
             });
@@ -333,7 +339,10 @@ impl ModManagerUi {
             );
 
             if accepted && ModDeclaration::is_name_valid(&self.create_new_mod_modal.input) {
-                if let Err(err) = self.instance.create_mod(&self.create_new_mod_modal.input) {
+                if let Err(err) = self
+                    .instance
+                    .create_mod(&self.create_new_mod_modal.input, self.create_new_mod_modal.kind)
+                {
                     error!("failed to create mod '{}': {}", &self.create_new_mod_modal.input, err);
                 }
                 ui.close();
@@ -458,6 +467,7 @@ impl ModManagerUi {
 #[derive(Debug, Default)]
 struct CreateNewModModal {
     open: bool,
+    kind: ModEntryKind,
     input: String,
 }
 
