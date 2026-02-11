@@ -207,7 +207,6 @@ impl UnresolvedTreeBuildError {
             Self::Io(err) => TreeBuildError::Io(err),
             Self::TypeMismatch(node_id) => {
                 let conflict_node = tree.get(node_id).expect("node exists");
-                let name = &conflict_node.data().name;
                 let expected_dir = matches!(&conflict_node.data().kind, TreeNodeKind::File { .. });
 
                 let ancestors: Vec<_> = conflict_node.ancestors().collect();
@@ -237,10 +236,12 @@ impl UnresolvedTreeBuildError {
                 let joined_conflicting_mod_names = itertools::join(conflicting_mod_names, "', '");
                 match &conflict_node.data().kind {
                     TreeNodeKind::Dir => TreeBuildError::TypeMismatch(format!(
-                        "'{name}' is used as both a directory and a file by different mods: it's a file in '{mod_name}', but a directory in '{joined_conflicting_mod_names}'"
+                        "'{}' is used as both a directory and a file by different mods: it's a file in '{mod_name}', but a directory in '{joined_conflicting_mod_names}'",
+                        node_path.display(),
                     )),
                     TreeNodeKind::File { .. } => TreeBuildError::TypeMismatch(format!(
-                        "'{name}' is used as both a directory and a file by different mods: it's a directory in '{mod_name}', but a file in '{joined_conflicting_mod_names}'"
+                        "'{}' is used as both a directory and a file by different mods: it's a directory in '{mod_name}', but a file in '{joined_conflicting_mod_names}'",
+                        node_path.display(),
                     )),
                 }
             }
