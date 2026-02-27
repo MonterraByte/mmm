@@ -15,52 +15,20 @@
 
 //! Functions for walking through mod files and representing them as a tree.
 
+pub mod display;
+mod node;
+
 use std::fs;
 use std::io;
-use std::mem;
 use std::path::PathBuf;
 
 use compact_str::CompactString;
 use nary_tree::{NodeId, NodeMut, Tree, TreeBuilder};
-use smallvec::{SmallVec, smallvec};
+use smallvec::smallvec;
 use thiserror::Error;
 
+pub use self::node::{ModVec, TreeNode, TreeNodeKind};
 use crate::instance::{Instance, ModDeclaration, ModIndex};
-
-type ModVec = SmallVec<[ModIndex; 4]>;
-const _: () = assert!(mem::size_of::<ModVec>() == 24);
-const _: () = assert!(mem::size_of::<SmallVec<[ModIndex; 5]>>() == 32);
-
-/// A node of a [`FileTree`].
-#[derive(Debug)]
-pub struct TreeNode {
-    name: CompactString,
-    kind: TreeNodeKind,
-}
-
-impl TreeNode {
-    #[must_use]
-    pub const fn name(&self) -> &CompactString {
-        &self.name
-    }
-
-    #[must_use]
-    pub const fn kind(&self) -> &TreeNodeKind {
-        &self.kind
-    }
-}
-
-/// The type of node in a [`FileTree`].
-#[derive(Debug)]
-pub enum TreeNodeKind {
-    /// Node representing a directory.
-    Dir,
-    /// Node representing a file.
-    File {
-        /// The [`ModIndex`]s of the mods that provide this file. The mods that appear first have higher priority.
-        providing_mods: ModVec,
-    },
-}
 
 /// A tree representing the combination of files from multiple mods.
 ///
@@ -256,82 +224,4 @@ pub enum TreeBuildError {
     Io(#[from] io::Error),
     #[error("{0}")]
     TypeMismatch(String),
-}
-
-/// Structure to display [`FileTree`]s using [`ptree`].
-#[derive(Clone)]
-pub struct FileTreeDisplay<'a> {
-    tree: &'a FileTree,
-    instance: &'a dyn Instance,
-    current_node: NodeId,
-    kind: FileTreeDisplayKind,
-}
-
-/// Specifies what files are displayed by [`FileTreeDisplay`].
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum FileTreeDisplayKind {
-    /// Show all files.
-    All,
-    /// Only show files provided by multiple mods.
-    Conflicts,
-}
-
-impl<'a> FileTreeDisplay<'a> {
-    #[must_use]
-    pub fn new(tree: &'a FileTree, instance: &'a dyn Instance, kind: FileTreeDisplayKind) -> Self {
-        Self {
-            tree,
-            instance,
-            current_node: tree.root_id().expect("has root node"),
-            kind,
-        }
-    }
-}
-
-impl ptree::TreeItem for FileTreeDisplay<'_> {
-    type Child = Self;
-
-    fn write_self<W: io::Write>(&self, f: &mut W, style: &ptree::Style) -> io::Result<()> {
-        let node = self.tree.get(self.current_node).expect("node exists");
-        match &node.data().kind {
-            TreeNodeKind::Dir => write!(f, "📁 {}", style.paint(&node.data().name)),
-            TreeNodeKind::File { providing_mods } => {
-                write!(
-                    f,
-                    "📄 {} ('{}')",
-                    style.paint(&node.data().name),
-                    itertools::join(
-                        providing_mods.iter().map(|idx| self.instance.mods()[*idx].name()),
-                        "', '"
-                    )
-                )
-            }
-        }
-    }
-
-    fn children(&self) -> std::borrow::Cow<'_, [Self::Child]> {
-        let node = self.tree.get(self.current_node).expect("node exists");
-        let children: Vec<_> = node
-            .children()
-            .filter(|node| {
-                if self.kind != FileTreeDisplayKind::Conflicts {
-                    return true;
-                }
-                match node.data().kind() {
-                    TreeNodeKind::Dir => node.traverse_pre_order().any(|node| match node.data().kind {
-                        TreeNodeKind::Dir => false,
-                        TreeNodeKind::File { ref providing_mods } => providing_mods.len() > 1,
-                    }),
-                    TreeNodeKind::File { providing_mods } => providing_mods.len() > 1,
-                }
-            })
-            .map(|node| FileTreeDisplay {
-                tree: self.tree,
-                instance: self.instance,
-                current_node: node.node_id(),
-                kind: self.kind,
-            })
-            .collect();
-        std::borrow::Cow::Owned(children)
-    }
 }

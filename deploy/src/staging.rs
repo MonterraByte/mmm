@@ -38,12 +38,12 @@ pub fn build_staging_tree(tree: &FileTree, instance: &DeployInstance) -> Result<
             .rev()
             .skip(1)
             .chain(iter::once(&node))
-            .map(|node| node.data().name())
+            .map(|node| &node.data().name)
             .collect();
         ancestors.clear();
         let staging_path = staging_dir.path().join(&relative_path);
 
-        match node.data().kind() {
+        match &node.data().kind {
             TreeNodeKind::Dir => {
                 fs::create_dir(&staging_path)
                     .map_err(|source| StagingTreeBuildError::Mkdir { path: staging_path, source })?;
