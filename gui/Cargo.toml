@@ -14,8 +14,8 @@ clap = { workspace = true }
 foldhash = { workspace = true }
 mmm-core = { path = "../core" }
 mmm-edit = { path = "../edit" }
-eframe = "0.33"
-egui_extras = "0.33"
+eframe = "0.34"
+egui_extras = "0.34"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

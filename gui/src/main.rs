@@ -25,9 +25,11 @@ use std::sync::mpsc::Sender;
 
 use anyhow::Context as _;
 use clap::Parser;
-use eframe::egui::{Id, Modal, Popup, Sides, TextStyle, TextWrapMode, TopBottomPanel};
 use eframe::{App, Frame, NativeOptions, egui};
-use egui::{Align, CentralPanel, Color32, Context, Layout, ScrollArea, Sense, Stroke, Ui};
+use egui::{
+    Align, CentralPanel, Color32, Id, Layout, Modal, Panel, Popup, ScrollArea, Sense, Sides, Stroke, TextStyle,
+    TextWrapMode, Ui,
+};
 use egui_extras::{Column, TableBuilder};
 use foldhash::HashSet;
 use tracing::{Level, error, info};
@@ -95,12 +97,12 @@ impl ModManagerUi {
 }
 
 impl App for ModManagerUi {
-    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
-        TopBottomPanel::bottom(Id::new("status")).show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
+        Panel::bottom(Id::new("status")).show_inside(ui, |ui| {
             self.status_bar(ui);
         });
 
-        CentralPanel::default().show(ctx, |ui| {
+        CentralPanel::default().show_inside(ui, |ui| {
             self.center_panel(ui);
         });
 
