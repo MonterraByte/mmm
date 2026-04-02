@@ -5,15 +5,27 @@ edition = "2024"
 license = "GPL-3.0-or-later"
 
 [dependencies]
+anyhow = { workspace = true }
+camino = { workspace = true }
 cbor4ii = { workspace = true }
 compact_str = { workspace = true }
 foldhash = { workspace = true }
 git2 = "0.20"
+icu_collator = "2.1"
 mmm-core = { path = "../core" }
+nary_tree = { workspace = true }
+recycle_vec = "1.1"
+replace_with = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 typed-index-collections = { workspace = true }
+sevenz-rust2 = { version = "0.20", default-features = false }
+tar = { version = "0.4", default-features = false }
+tempfile = { workspace = true }
 unicode-segmentation = "1.13"
+unrar = "0.5"
+zip = { version = "8.4", "default-features" = false, features = ["deflate-flate2-zlib-rs"] }
+itertools = "0.14"
 
 [lints]
 workspace = true

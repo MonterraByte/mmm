@@ -12,12 +12,21 @@ path = "src/main.rs"
 anyhow = { workspace = true }
 clap = { workspace = true }
 foldhash = { workspace = true }
+futures = { version = "0.3", default-features = false }
 mmm-core = { path = "../core" }
 mmm-edit = { path = "../edit" }
+nary_tree = { workspace = true }
+pin-project = "1.1"
 eframe = "0.34"
 egui_extras = "0.34"
+egui_ltreeview = { git = "https://github.com/LennysLounge/egui_ltreeview.git", rev = "4a5c2fdcb4b1fc6533ce8aba25a7276aeab7424d" }
+rfd = "0.17"
+replace_with = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+
+itertools = "0.14"
 
 [lints]
 workspace = true

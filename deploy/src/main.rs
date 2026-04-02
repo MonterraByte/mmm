@@ -28,12 +28,13 @@ use anyhow::Context;
 use clap::Parser;
 use signal_hook::consts::SIGINT;
 
-use mmm_core::file_tree;
-use mmm_core::file_tree::display::{FileTreeDisplay, FileTreeDisplayKind};
-
 use crate::instance::DeployInstance;
 use crate::mount::{MountMethod, MountMethodChoice, OverlayMount};
 use crate::staging::build_staging_tree;
+use mmm_core::file_tree;
+use mmm_core::file_tree::FileTreeBuilder;
+use mmm_core::file_tree::display::{FileTreeDisplayKind, MergedFileTreeDisplay};
+use mmm_core::file_tree::new_tree;
 
 #[derive(Parser)]
 struct Args {
@@ -57,9 +58,16 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mods = DeployInstance::open(&args.instance_path, args.profile.as_deref()).context("failed to open instance")?;
-    let tree = file_tree::build_path_tree(&mods).context("failed to build tree of mod files")?;
-    ptree::print_tree(&FileTreeDisplay::new(&tree, &mods, FileTreeDisplayKind::Conflicts))
-        .context("failed to display file tree")?;
+    let mut tree = new_tree();
+    FileTreeBuilder::new()
+        .iter_mods(&mut tree, &mods)
+        .context("failed to build tree of mod files")?;
+    ptree::print_tree(&MergedFileTreeDisplay::new(
+        &tree,
+        &mods,
+        FileTreeDisplayKind::Conflicts,
+    ))
+    .context("failed to display file tree")?;
 
     if matches!(mount_method, MountMethod::UserNamespace) {
         namespace::enter_namespace().context("failed to enter user namespace")?;

@@ -21,13 +21,16 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-use mmm_core::file_tree::{FileTree, TreeNodeKind};
+use mmm_core::file_tree::{MergedFileTree, TreeNodeKind};
 use mmm_core::instance::Instance;
 
 use crate::instance::DeployInstance;
 use crate::mount::{TempMount, TempMountCreationError};
 
-pub fn build_staging_tree(tree: &FileTree, instance: &DeployInstance) -> Result<TempMount, StagingTreeBuildError> {
+pub fn build_staging_tree(
+    tree: &MergedFileTree,
+    instance: &DeployInstance,
+) -> Result<TempMount, StagingTreeBuildError> {
     let staging_dir = TempMount::new()?;
 
     let mut ancestors = Vec::new();
@@ -48,7 +51,7 @@ pub fn build_staging_tree(tree: &FileTree, instance: &DeployInstance) -> Result<
                 fs::create_dir(&staging_path)
                     .map_err(|source| StagingTreeBuildError::Mkdir { path: staging_path, source })?;
             }
-            TreeNodeKind::File { providing_mods } => {
+            TreeNodeKind::File(providing_mods) => {
                 let mod_index = *providing_mods
                     .first()
                     .expect("files are always provided by at least one mod");

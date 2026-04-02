@@ -16,29 +16,37 @@
 #![forbid(unsafe_code)]
 
 mod background_task;
+mod details;
+mod install;
+mod tree;
+mod utils;
 
+use std::collections::hash_map::Entry;
 use std::ffi::OsStr;
 use std::fmt::Write;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Receiver, Sender};
 
 use anyhow::Context as _;
 use clap::Parser;
+use eframe::egui::Context;
 use eframe::{App, Frame, NativeOptions, egui};
 use egui::{
     Align, CentralPanel, Color32, Id, Layout, Modal, Panel, Popup, ScrollArea, Sense, Sides, Stroke, TextStyle,
     TextWrapMode, Ui,
 };
 use egui_extras::{Column, TableBuilder};
-use foldhash::HashSet;
+use foldhash::{HashMap, HashSet};
 use tracing::{Level, error, info};
 use tracing_subscriber::EnvFilter;
 
 use mmm_core::instance::{Instance, ModDeclaration, ModEntryKind, ModIndex, ModOrderIndex};
 use mmm_edit::EditableInstance;
 
-use crate::background_task::{BackgroundTask, StatusString, spawn_background_thread};
+use crate::background_task::{BackgroundTask, Finalizer, StatusString, spawn_background_thread};
+use crate::details::ModDetailsWindow;
+use crate::install::OngoingModInstallation;
 
 const APP_NAME: &str = "zone.monterra.modmanager";
 
@@ -70,48 +78,67 @@ fn main() -> anyhow::Result<()> {
 pub struct ModManagerUi {
     instance: EditableInstance,
     background_task_queue: Sender<BackgroundTask>,
+    background_task_finalizer_queue: Receiver<Finalizer>,
     background_task_status: StatusString,
     selection: HashSet<ModOrderIndex>,
     last_selected: Option<ModOrderIndex>,
+    open_mod_details: HashMap<ModIndex, ModDetailsWindow>,
     create_new_mod_modal: CreateNewModModal,
     rename_mod_modal: RenameModModal,
     remove_selected_mods_modal: RemoveSelectedModsModal,
+    ongoing_mod_installs: Vec<OngoingModInstallation>,
 }
 
 impl ModManagerUi {
     fn new(instance: EditableInstance) -> Box<Self> {
-        let (background_task_queue, background_task_status) =
+        let (background_task_queue, background_task_finalizer_queue, background_task_status) =
             spawn_background_thread().expect("failed to spawn background task thread");
 
         Box::new(Self {
             instance,
             background_task_queue,
+            background_task_finalizer_queue,
             background_task_status,
             selection: HashSet::default(),
             last_selected: None,
+            open_mod_details: HashMap::default(),
             create_new_mod_modal: CreateNewModModal::default(),
             rename_mod_modal: RenameModModal::default(),
             remove_selected_mods_modal: RemoveSelectedModsModal::default(),
+            ongoing_mod_installs: Vec::new(),
         })
     }
 }
 
 impl App for ModManagerUi {
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
+    fn logic(&mut self, _ctx: &Context, _frame: &mut Frame) {
+        for finalizer in self.background_task_finalizer_queue.try_iter() {
+            finalizer(&mut self.instance);
+        }
+
+        self.instance.save();
+    }
+
+    fn ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
         Panel::bottom(Id::new("status")).show_inside(ui, |ui| {
             self.status_bar(ui);
         });
 
         CentralPanel::default().show_inside(ui, |ui| {
-            self.center_panel(ui);
+            self.center_panel(ui, frame);
         });
+
+        self.open_mod_details
+            .retain(|idx, window| window.show_viewport(ui, &self.instance, *idx).into());
+        self.ongoing_mod_installs
+            .retain_mut(|install| install.update(ui, &self.instance).into());
 
         self.instance.save();
     }
 }
 
 impl ModManagerUi {
-    fn center_panel(&mut self, ui: &mut Ui) {
+    fn center_panel(&mut self, ui: &mut Ui, frame: &mut Frame) {
         ui.horizontal(|ui| {
             let response = ui.button("Add mod");
             Popup::menu(&response).show(|ui| {
@@ -123,6 +150,14 @@ impl ModManagerUi {
                 if ui.button("Create separator").clicked() {
                     self.create_new_mod_modal.kind = ModEntryKind::Separator;
                     self.create_new_mod_modal.open = true;
+                }
+
+                if ui.button("Install from file").clicked() {
+                    self.ongoing_mod_installs
+                        .push(OngoingModInstallation::new_with_file_picker(
+                            frame,
+                            self.background_task_queue.clone(),
+                        ));
                 }
             });
 
@@ -254,6 +289,18 @@ impl ModManagerUi {
                             self.selection.clear();
                             self.selection.insert(row_index);
                             self.last_selected = Some(row_index);
+                        }
+                    }
+
+                    if response.double_clicked() {
+                        let entry = self
+                            .open_mod_details
+                            .entry(order_entry.mod_index())
+                            .and_modify(ModDetailsWindow::raise);
+                        if matches!(entry, Entry::Vacant(_))
+                            && let Ok(window) = ModDetailsWindow::new(&self.instance, order_entry.mod_index())
+                        {
+                            entry.or_insert(window);
                         }
                     }
 
@@ -566,6 +613,8 @@ impl RemoveSelectedModsModal {
                     error!("failed to delete '{}': {}", path.display(), err);
                 }
             }
+
+            None
         })
     }
 }

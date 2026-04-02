@@ -5,12 +5,13 @@ edition = "2024"
 license = "GPL-3.0-or-later"
 
 [dependencies]
+camino = { workspace = true }
 cbor4ii = { workspace = true }
 compact_str = { workspace = true }
 const_format = { version = "0.2" }
 itertools = "0.14"
 ptree = { workspace = true }
-nary_tree = "0.4"
+nary_tree = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 smallvec = { version = "1.15", features = ["union"] }
 thiserror = { workspace = true }

@@ -13,6 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use std::path::{Path, PathBuf};
+
 /// Moves multiple items in a slice to the specified index.
 ///
 /// When moving items to the right, the target index needs to be adjusted to compensate for the items shifted left,
@@ -103,4 +105,41 @@ pub fn move_multiple<T>(slice: &mut [T], from: impl Iterator<Item = usize>, to: 
     }
 
     to
+}
+
+pub struct ResettablePathBuf {
+    buffer: PathBuf,
+    base_length: usize,
+}
+
+impl ResettablePathBuf {
+    #[must_use]
+    pub fn new(base: PathBuf) -> Self {
+        Self { base_length: base.as_os_str().len(), buffer: base }
+    }
+
+    pub fn reset_to_base(&mut self) {
+        self.buffer.as_mut_os_string().truncate(self.base_length);
+    }
+
+    pub fn set_base_to_current(&mut self) {
+        self.base_length = self.buffer.as_os_str().len();
+    }
+
+    #[inline]
+    pub fn push<P: AsRef<Path>>(&mut self, path: P) -> &Path {
+        self.push_inner(path.as_ref())
+    }
+
+    fn push_inner(&mut self, path: &Path) -> &Path {
+        assert!(path.is_relative());
+        self.buffer.push(path);
+        &self.buffer
+    }
+}
+
+impl AsRef<Path> for ResettablePathBuf {
+    fn as_ref(&self) -> &Path {
+        &self.buffer
+    }
 }

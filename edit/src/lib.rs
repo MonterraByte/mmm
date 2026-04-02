@@ -14,11 +14,15 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![forbid(unsafe_code)]
+#![feature(os_string_truncate)]
 
+pub mod archive;
+pub mod file_tree;
 mod instance;
 mod r#mod;
 mod util;
 mod writer;
 
 pub use instance::{EditableInstance, InstanceOpenError};
+pub use r#mod::staging::{StageError, StagedInstall};
 pub use r#mod::{Mod, ModInitError};

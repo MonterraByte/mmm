@@ -14,24 +14,30 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use std::io;
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-pub type StatusString = Arc<Mutex<String>>;
-pub type BackgroundTask = Box<dyn FnOnce(&StatusString) + Send>;
+use mmm_edit::EditableInstance;
 
-pub fn spawn_background_thread() -> Result<(Sender<BackgroundTask>, StatusString), io::Error> {
-    let (sender, receiver) = mpsc::channel::<BackgroundTask>();
+pub type StatusString = Arc<Mutex<String>>;
+pub type BackgroundTask = Box<dyn FnOnce(&StatusString) -> Option<Finalizer> + Send>;
+pub type Finalizer = Box<dyn FnOnce(&mut EditableInstance) + Send>;
+
+pub fn spawn_background_thread() -> Result<(Sender<BackgroundTask>, Receiver<Finalizer>, StatusString), io::Error> {
+    let (task_sender, task_receiver) = mpsc::channel::<BackgroundTask>();
+    let (finalizer_sender, finalizer_receiver) = mpsc::channel::<Finalizer>();
     let status = Arc::new(Mutex::new(String::new()));
     let status_clone = Arc::clone(&status);
 
     thread::Builder::new().name("background".to_owned()).spawn(move || {
-        while let Ok(req) = receiver.recv() {
-            req(&status);
+        while let Ok(req) = task_receiver.recv() {
+            if let Some(finalizer) = req(&status) {
+                let _ = finalizer_sender.send(finalizer);
+            }
             status.lock().expect("lock is not poisoned").clear();
         }
     })?;
 
-    Ok((sender, status_clone))
+    Ok((task_sender, finalizer_receiver, status_clone))
 }

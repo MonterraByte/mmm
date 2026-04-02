@@ -15,29 +15,31 @@
 
 use std::fs;
 use std::io;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 use compact_str::{CompactString, format_compact};
 use foldhash::HashSet;
-use thiserror::Error;
-use tracing::{error, trace};
-use typed_index_collections::{TiSlice, TiVec};
-use unicode_segmentation::UnicodeSegmentation;
-
 use mmm_core::instance::data::{INSTANCE_DATA_FILE, InstanceData, InstanceDataOpenError};
 use mmm_core::instance::{
     DEFAULT_PROFILE, DEFAULT_PROFILE_NAME, Instance, InvalidModNameError, ModDeclaration, ModEntryKind, ModIndex,
     ModOrderEntry, ModOrderIndex, Profile,
 };
+use thiserror::Error;
+use tracing::{error, trace};
+use typed_index_collections::{TiSlice, TiVec};
+use unicode_segmentation::UnicodeSegmentation;
 
+use crate::r#mod::staging::{PlaceError, StagedInstall};
 use crate::util::move_multiple;
 use crate::writer::{WriteRequest, WriteTarget, spawn_writer_thread};
 use crate::{Mod, ModInitError};
 
 /// Implementation of [`Instance`] with editing support (for interactive applications).
 pub struct EditableInstance {
-    dir: PathBuf,
+    dir: Arc<Path>,
     data: InstanceData,
     state: EditorState,
     write_queue: Sender<WriteRequest>,
@@ -48,12 +50,14 @@ impl EditableInstance {
     /// Opens the instance at the specified path.
     #[allow(clippy::assigning_clones, reason = "compact_str clones don't share resources")]
     pub fn open(dir: &Path) -> Result<Self, InstanceOpenError> {
-        let dir = dir
-            .canonicalize()
-            .map_err(|source| InstanceOpenError::DirCanonicalize { source, dir: dir.to_owned() })?;
+        let dir: Arc<Path> = Arc::from(
+            dir.canonicalize()
+                .map_err(|source| InstanceOpenError::DirCanonicalize { source, dir: dir.to_owned() })?
+                .into_boxed_path(),
+        );
         if !dir
             .metadata()
-            .map_err(|source| InstanceOpenError::DirMetadata { source, dir: dir.clone() })?
+            .map_err(|source| InstanceOpenError::DirMetadata { source, dir: Arc::clone(&dir) })?
             .is_dir()
         {
             return Err(InstanceOpenError::NotADirectory(dir));
@@ -114,9 +118,9 @@ pub enum InstanceOpenError {
     #[error("failed to canonicalize path '{dir}'")]
     DirCanonicalize { source: io::Error, dir: PathBuf },
     #[error("failed to get metadata of '{dir}'")]
-    DirMetadata { source: io::Error, dir: PathBuf },
+    DirMetadata { source: io::Error, dir: Arc<Path> },
     #[error("'{0}' is not a directory")]
-    NotADirectory(PathBuf),
+    NotADirectory(Arc<Path>),
     #[error("failed to open instance data file")]
     DataOpen(#[from] InstanceDataOpenError),
     #[error("failed to spawn writer thread")]
@@ -143,6 +147,11 @@ impl Instance for EditableInstance {
 }
 
 impl EditableInstance {
+    #[must_use]
+    pub fn dir_clone(&self) -> Arc<Path> {
+        Arc::clone(&self.dir)
+    }
+
     fn mod_order_mut(&mut self) -> &mut TiVec<ModOrderIndex, ModOrderEntry> {
         &mut self
             .data
@@ -237,6 +246,22 @@ impl EditableInstance {
         Mod::init(self, idx).map_err(Into::into)
     }
 
+    pub fn add_staged_mod(&mut self, name: &str, staged_mod: StagedInstall) -> Result<(), AddStagedModError> {
+        if self.mods().iter().any(|m| m.name() == name) {
+            return Err(AddStagedModError::AlreadyExists);
+        }
+        let mod_decl = ModDeclaration::new(name.into(), ModEntryKind::Mod)?;
+        let mod_dir = self.mod_dir(&mod_decl).expect("not a separator");
+
+        staged_mod.place(&mod_dir)?;
+
+        self.changed = true;
+        let idx = self.data.mods.push_and_get_key(mod_decl);
+        self.mod_order_mut().push(ModOrderEntry::new(idx));
+
+        Ok(())
+    }
+
     /// Removes the specified mod.
     ///
     /// The mod's files are not deleted. This function returns the path to the mod directory,
@@ -305,6 +330,16 @@ pub enum CreateModError {
     InvalidName(#[from] InvalidModNameError),
     #[error("failed to initialize mod directory")]
     Init(#[from] ModInitError),
+}
+
+#[derive(Debug, Error)]
+pub enum AddStagedModError {
+    #[error("there already exists a mod with the specified name")]
+    AlreadyExists,
+    #[error(transparent)]
+    InvalidName(#[from] InvalidModNameError),
+    #[error(transparent)]
+    Place(#[from] PlaceError),
 }
 
 #[derive(Debug, Error)]
