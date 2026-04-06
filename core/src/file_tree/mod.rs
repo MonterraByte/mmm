@@ -20,11 +20,12 @@ mod node;
 
 use std::fs;
 use std::io;
+use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use compact_str::CompactString;
 use nary_tree::{NodeId, NodeMut, NodeRef, Tree, TreeBuilder};
-use smallvec::smallvec;
+use smallvec::{SmallVec, smallvec};
 use thiserror::Error;
 
 pub use self::node::{ModVec, TreeNode, TreeNodeKind};
@@ -32,151 +33,210 @@ use crate::instance::{Instance, ModDeclaration, ModIndex};
 
 /// A tree of files.
 pub type FileTree<F = ()> = Tree<TreeNode<F>>;
-type FileNodeMut<'a> = NodeMut<'a, TreeNode<ModVec>>;
 
 pub type TreeNodeRef<'a, F = ()> = NodeRef<'a, TreeNode<F>>;
+pub type TreeNodeMut<'a, F = ()> = NodeMut<'a, TreeNode<F>>;
 
-/// Builds a [`FileTree`] from all the enabled mods in the specified instance.
-pub fn build_path_tree(instance: &impl Instance) -> Result<FileTree<ModVec>, TreeBuildError> {
-    let mut tree = TreeBuilder::new()
+/// Creates a new empty [`FileTree`].
+#[must_use]
+pub fn new_tree<F>() -> FileTree<F> {
+    TreeBuilder::new()
         .with_root(TreeNode {
             name: CompactString::const_new("."),
             kind: TreeNodeKind::Dir,
         })
-        .build();
-    let root = tree.root_id().expect("has root node");
-
-    for entry in instance.mod_order().iter().rev() {
-        if !entry.enabled {
-            continue;
-        }
-
-        let mod_index = entry.mod_index();
-        let mod_decl = &instance.mods()[mod_index];
-        let Some(mod_dir) = instance.mod_dir(mod_decl) else {
-            // skip separators
-            continue;
-        };
-
-        iter_dir(&mut tree, mod_index, mod_dir, root).map_err(|err| err.with_context(&tree, mod_decl, instance))?;
-    }
-
-    Ok(tree)
+        .build()
 }
 
-fn iter_dir(
-    tree: &mut FileTree<ModVec>,
-    mod_index: ModIndex,
-    dir: PathBuf,
-    node: NodeId,
-) -> Result<(), UnresolvedTreeBuildError> {
-    let mut dirs_to_visit = vec![(dir, node)];
-    let mut root = true;
+/// Struct for building out a [`FileTree`] in a configurable way.
+pub struct FileTreeBuilder<F = (), Value: ProvideValue<F> = Unit> {
+    value: Value,
+    _file_type: PhantomData<F>,
+}
 
-    while let Some((dir, node)) = dirs_to_visit.pop() {
-        for entry in fs::read_dir(&dir)? {
-            let entry = entry?;
-            let entry_name = entry.file_name().into_string().unwrap();
-            let entry_type = entry.file_type()?;
-            drop(entry);
+impl FileTreeBuilder {
+    /// Creates a new `FileTreeBuilder`.
+    #[must_use]
+    pub const fn new() -> FileTreeBuilder<()> {
+        FileTreeBuilder { value: Unit, _file_type: PhantomData }
+    }
+}
 
-            if root && entry_name == ".git" {
+impl Default for FileTreeBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<F, Value: ProvideValue<F>> FileTreeBuilder<F, Value> {
+    /// Returns a new `FileTreeBuilder` that will create file nodes with the specified value in their `Vec`s.
+    #[inline]
+    pub fn with_item_value<T, Arr>(self, value: T) -> FileTreeBuilder<SmallVec<Arr>, VariableVec<T>>
+    where
+        T: Clone,
+        Arr: smallvec::Array<Item = T>,
+    {
+        FileTreeBuilder { value: VariableVec(value), _file_type: PhantomData }
+    }
+
+    /// Iterates over the specified directory, creating node that correspond to each entry in the provided tree.
+    pub fn iter_dir(&self, tree: &mut FileTree<F>, dir: PathBuf) -> Result<(), IterDirError> {
+        self.iter_dir_inner(tree, dir).map_err(|err| err.without_context(tree))
+    }
+
+    fn iter_dir_inner(&self, tree: &mut FileTree<F>, dir: PathBuf) -> Result<(), UnresolvedIterDirError> {
+        let mut dirs_to_visit = vec![(dir, tree.root_id().expect("has root node"))];
+        let mut root = true;
+
+        while let Some((dir, node)) = dirs_to_visit.pop() {
+            for entry in fs::read_dir(&dir)? {
+                let entry = entry?;
+                let entry_name = entry.file_name().into_string().unwrap();
+                let entry_type = entry.file_type()?;
+                drop(entry);
+
+                if root && entry_name == ".git" {
+                    continue;
+                }
+
+                let entry_node = if let Some(child_node) = find_child_with_name(tree, node, &entry_name) {
+                    self.value
+                        .add_to_existing_node(tree.get_mut(child_node).expect("node exists"), entry_type.is_dir())
+                        .map_err(UnresolvedIterDirError::TypeMismatch)?;
+                    child_node
+                } else {
+                    let parent = tree.get_mut(node).expect("node exists");
+                    if entry_type.is_dir() {
+                        create_dir_node(parent, &entry_name)
+                    } else {
+                        self.value.create_file_node(parent, &entry_name)
+                    }
+                };
+
+                if entry_type.is_dir() {
+                    dirs_to_visit.push((dir.join(entry_name), entry_node));
+                }
+            }
+
+            if root {
+                root = false;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Creates nodes in the tree representing the combination of files from all the enabled mods
+    /// in the specified instance.
+    ///
+    /// Each node in the tree that represents a file contains the list of mods that provide that file,
+    /// sorted from higher priority to lower.
+    pub fn iter_mods(self, tree: &mut FileTree<ModVec>, instance: &impl Instance) -> Result<(), IterDirError> {
+        let mut iter = self.with_item_value(ModIndex::ZERO);
+        for entry in instance.mod_order().iter().rev() {
+            if !entry.enabled {
                 continue;
             }
 
-            let entry_node = if let Some(child_node) = find_child_with_name(tree, node, &entry_name) {
-                add_to_existing_node(
-                    tree.get_mut(child_node).expect("node exists"),
-                    mod_index,
-                    entry_type.is_dir(),
-                )?;
-                child_node
-            } else {
-                let parent = tree.get_mut(node).expect("node exists");
-                if entry_type.is_dir() {
-                    create_dir_node(parent, &entry_name)
-                } else {
-                    create_file_node(parent, mod_index, &entry_name)
-                }
+            let mod_index = entry.mod_index();
+            let mod_decl = &instance.mods()[mod_index];
+            let Some(mod_dir) = instance.mod_dir(mod_decl) else {
+                // skip separators
+                continue;
             };
 
-            if entry_type.is_dir() {
-                dirs_to_visit.push((dir.join(entry_name), entry_node));
+            iter = iter.with_item_value(mod_index);
+            iter.iter_dir_inner(tree, mod_dir)
+                .map_err(|err| err.with_modvec_context(tree, mod_decl, instance))?;
+        }
+
+        Ok(())
+    }
+}
+
+/// A value provider for use with [`FileTreeBuilder`].
+pub trait ProvideValue<F> {
+    fn create_file_node(&self, parent: TreeNodeMut<F>, name: &str) -> NodeId;
+    fn add_to_existing_node(&self, node: TreeNodeMut<F>, expect_dir: bool) -> Result<(), NodeId>;
+}
+
+/// A [value provider](ProvideValue) for the [`()`] type.
+pub struct Unit;
+
+impl ProvideValue<()> for Unit {
+    fn create_file_node(&self, mut parent: TreeNodeMut<()>, name: &str) -> NodeId {
+        parent
+            .append(TreeNode { name: name.into(), kind: TreeNodeKind::File(()) })
+            .node_id()
+    }
+
+    fn add_to_existing_node(&self, mut node: TreeNodeMut<()>, expect_dir: bool) -> Result<(), NodeId> {
+        let kind = &node.data().kind;
+        match (kind, expect_dir) {
+            (TreeNodeKind::Dir, true) | (TreeNodeKind::File(()), false) => Ok(()),
+            (TreeNodeKind::Dir, false) | (TreeNodeKind::File(()), true) => Err(node.node_id()),
+        }
+    }
+}
+
+/// A [value provider](ProvideValue) for the [`ModVec`] type.
+pub struct VariableVec<T: Clone>(T);
+
+impl<T, Arr> ProvideValue<SmallVec<Arr>> for VariableVec<T>
+where
+    T: Clone,
+    Arr: smallvec::Array<Item = T>,
+{
+    fn create_file_node(&self, mut parent: TreeNodeMut<SmallVec<Arr>>, name: &str) -> NodeId {
+        parent
+            .append(TreeNode {
+                name: name.into(),
+                kind: TreeNodeKind::File(smallvec![self.0.clone()]),
+            })
+            .node_id()
+    }
+
+    fn add_to_existing_node(&self, mut node: TreeNodeMut<SmallVec<Arr>>, expect_dir: bool) -> Result<(), NodeId> {
+        let kind = &mut node.data().kind;
+        match (kind, expect_dir) {
+            (TreeNodeKind::Dir, true) => Ok(()),
+            (TreeNodeKind::File(info), false) => {
+                info.push(self.0.clone());
+                Ok(())
             }
-        }
-
-        if root {
-            root = false;
+            (TreeNodeKind::Dir, false) | (TreeNodeKind::File(_), true) => Err(node.node_id()),
         }
     }
-
-    Ok(())
 }
 
-fn find_child_with_name(tree: &FileTree<ModVec>, parent: NodeId, name: &str) -> Option<NodeId> {
-    let parent = tree.get(parent).expect("node exists");
-    for child in parent.children() {
-        if child.data().name == name {
-            return Some(child.node_id());
-        }
-    }
-    None
-}
-
-fn create_dir_node(mut parent: FileNodeMut, name: &str) -> NodeId {
+#[allow(clippy::must_use_candidate)]
+fn create_dir_node<F>(mut parent: TreeNodeMut<F>, name: &str) -> NodeId {
     parent
         .append(TreeNode { name: name.into(), kind: TreeNodeKind::Dir })
         .node_id()
 }
 
-fn create_file_node(mut parent: FileNodeMut, mod_index: ModIndex, name: &str) -> NodeId {
-    parent
-        .append(TreeNode {
-            name: name.into(),
-            kind: TreeNodeKind::File(smallvec![mod_index]),
-        })
-        .node_id()
-}
-
-fn add_to_existing_node(
-    mut node: FileNodeMut,
-    mod_index: ModIndex,
-    expect_dir: bool,
-) -> Result<(), UnresolvedTreeBuildError> {
-    let kind = &mut node.data().kind;
-    match (kind, expect_dir) {
-        (TreeNodeKind::Dir, true) => Ok(()),
-        (TreeNodeKind::File(providing_mods), false) => {
-            providing_mods.push(mod_index);
-            Ok(())
-        }
-        (TreeNodeKind::Dir, false) | (TreeNodeKind::File { .. }, true) => {
-            Err(UnresolvedTreeBuildError::TypeMismatch(node.node_id()))
-        }
-    }
-}
-
 #[derive(Debug)]
-enum UnresolvedTreeBuildError {
+enum UnresolvedIterDirError {
     Io(io::Error),
     TypeMismatch(NodeId),
 }
 
-impl From<io::Error> for UnresolvedTreeBuildError {
+impl From<io::Error> for UnresolvedIterDirError {
     fn from(err: io::Error) -> Self {
         Self::Io(err)
     }
 }
 
-impl UnresolvedTreeBuildError {
-    fn with_context(
+impl UnresolvedIterDirError {
+    fn with_modvec_context(
         self,
         tree: &FileTree<ModVec>,
         mod_decl: &ModDeclaration,
         instance: &impl Instance,
-    ) -> TreeBuildError {
+    ) -> IterDirError {
         match self {
-            Self::Io(err) => TreeBuildError::Io(err),
+            Self::Io(err) => IterDirError::Io(err),
             Self::TypeMismatch(node_id) => {
                 let conflict_node = tree.get(node_id).expect("node exists");
                 let expected_dir = !matches!(&conflict_node.data().kind, TreeNodeKind::Dir);
@@ -198,13 +258,13 @@ impl UnresolvedTreeBuildError {
                                 conflicting_mod_names.push(other_mod.name());
                             }
                         }
-                        Err(err) => return TreeBuildError::Io(err), // TODO: log initial error
+                        Err(err) => return IterDirError::Io(err), // TODO: log initial error
                     }
                 }
 
                 let mod_name = mod_decl.name();
                 let joined_conflicting_mod_names = itertools::join(conflicting_mod_names, "', '");
-                TreeBuildError::TypeMismatch(match &conflict_node.data().kind {
+                IterDirError::TypeMismatch(match &conflict_node.data().kind {
                     TreeNodeKind::Dir => format!(
                         "'{}' is used as both a directory and a file by different mods: it's a file in '{mod_name}', but a directory in '{joined_conflicting_mod_names}'",
                         node_path.display(),
@@ -217,15 +277,38 @@ impl UnresolvedTreeBuildError {
             }
         }
     }
+
+    fn without_context<F>(self, tree: &FileTree<F>) -> IterDirError {
+        match self {
+            Self::Io(err) => IterDirError::Io(err),
+            Self::TypeMismatch(node_id) => {
+                let conflict_node = tree.get(node_id).expect("node exists");
+                let path = node_path(&conflict_node);
+                IterDirError::TypeMismatch(
+                    format!("'{}' is used as both a directory and a file", path.display()).into_boxed_str(),
+                )
+            }
+        }
+    }
 }
 
-/// Error type returned by [`build_path_tree`].
+/// Error type returned by [`iter_dir`](FileTreeBuilder::iter_dir) and [`iter_mods`](FileTreeBuilder::iter_mods).
 #[derive(Debug, Error)]
-pub enum TreeBuildError {
+pub enum IterDirError {
     #[error("failed to read directory")]
     Io(#[from] io::Error),
     #[error("{0}")]
     TypeMismatch(Box<str>),
+}
+
+#[must_use]
+fn find_child_with_name<F>(tree: &FileTree<F>, parent: NodeId, name: &str) -> Option<NodeId> {
+    tree.get(parent)
+        .expect("node exists")
+        .children()
+        .find(|child| child.data().name == name)
+        .as_ref()
+        .map(NodeRef::node_id)
 }
 
 /// Returns the path from the root to the specified node.

@@ -400,6 +400,9 @@ macro_rules! custom_index {
         }
 
         impl $name {
+            #[allow(unused)]
+            pub(crate) const ZERO: Self = Self(0);
+
             #[must_use]
             pub fn saturating_add(self, other: impl Into<Self>) -> Self {
                 Self(self.0.saturating_add(other.into().0))
