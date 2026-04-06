@@ -28,7 +28,7 @@ use anyhow::Context;
 use clap::Parser;
 use signal_hook::consts::SIGINT;
 
-use mmm_core::file_tree::display::{FileTreeDisplay, FileTreeDisplayKind};
+use mmm_core::file_tree::display::{FileTreeDisplayKind, ModVecFileTreeDisplay};
 use mmm_core::file_tree::{FileTreeBuilder, new_tree};
 
 use crate::instance::DeployInstance;
@@ -61,8 +61,12 @@ fn main() -> anyhow::Result<()> {
     FileTreeBuilder::new()
         .iter_mods(&mut tree, &mods)
         .context("failed to build tree of mod files")?;
-    ptree::print_tree(&FileTreeDisplay::new(&tree, &mods, FileTreeDisplayKind::Conflicts))
-        .context("failed to display file tree")?;
+    ptree::print_tree(&ModVecFileTreeDisplay::new(
+        &tree,
+        &mods,
+        FileTreeDisplayKind::Conflicts,
+    ))
+    .context("failed to display file tree")?;
 
     if matches!(mount_method, MountMethod::UserNamespace) {
         namespace::enter_namespace().context("failed to enter user namespace")?;

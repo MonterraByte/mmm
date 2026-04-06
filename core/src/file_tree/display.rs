@@ -15,6 +15,7 @@
 
 //! Utilities for displaying the contents of a [`FileTree`].
 
+use std::borrow::Cow;
 use std::io;
 
 use nary_tree::NodeId;
@@ -23,15 +24,43 @@ use super::{FileTree, ModVec, TreeNodeKind};
 use crate::instance::Instance;
 
 /// Structure to display [`FileTree`]s using [`ptree`].
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct FileTreeDisplay<'a> {
+    tree: &'a FileTree,
+    current_node: NodeId,
+}
+
+impl ptree::TreeItem for FileTreeDisplay<'_> {
+    type Child = Self;
+
+    fn write_self<W: io::Write>(&self, f: &mut W, style: &ptree::Style) -> io::Result<()> {
+        let node = self.tree.get(self.current_node).expect("node exists");
+        match &node.data().kind {
+            TreeNodeKind::Dir => write!(f, "📁 {}", style.paint(&node.data().name)),
+            TreeNodeKind::File(()) => write!(f, "📄 {}", style.paint(&node.data().name)),
+        }
+    }
+
+    fn children(&self) -> Cow<'_, [Self::Child]> {
+        let node = self.tree.get(self.current_node).expect("node exists");
+        let children: Vec<_> = node
+            .children()
+            .map(|node| Self { tree: self.tree, current_node: node.node_id() })
+            .collect();
+        Cow::Owned(children)
+    }
+}
+
+/// Structure to display [`FileTree<ModVec>`]s using [`ptree`].
+#[derive(Copy, Clone)]
+pub struct ModVecFileTreeDisplay<'a> {
     tree: &'a FileTree<ModVec>,
     instance: &'a dyn Instance,
     current_node: NodeId,
     kind: FileTreeDisplayKind,
 }
 
-/// Specifies what files are displayed by [`FileTreeDisplay`].
+/// Specifies what files are displayed by [`ModVecFileTreeDisplay`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FileTreeDisplayKind {
     /// Show all files.
@@ -40,7 +69,7 @@ pub enum FileTreeDisplayKind {
     Conflicts,
 }
 
-impl<'a> FileTreeDisplay<'a> {
+impl<'a> ModVecFileTreeDisplay<'a> {
     #[must_use]
     pub fn new(tree: &'a FileTree<ModVec>, instance: &'a dyn Instance, kind: FileTreeDisplayKind) -> Self {
         Self {
@@ -52,7 +81,17 @@ impl<'a> FileTreeDisplay<'a> {
     }
 }
 
-impl ptree::TreeItem for FileTreeDisplay<'_> {
+impl<'a> FileTreeDisplay<'a> {
+    #[must_use]
+    pub fn new(tree: &'a FileTree) -> Self {
+        Self {
+            tree,
+            current_node: tree.root_id().expect("has root node"),
+        }
+    }
+}
+
+impl ptree::TreeItem for ModVecFileTreeDisplay<'_> {
     type Child = Self;
 
     fn write_self<W: io::Write>(&self, f: &mut W, style: &ptree::Style) -> io::Result<()> {
@@ -73,7 +112,7 @@ impl ptree::TreeItem for FileTreeDisplay<'_> {
         }
     }
 
-    fn children(&self) -> std::borrow::Cow<'_, [Self::Child]> {
+    fn children(&self) -> Cow<'_, [Self::Child]> {
         let node = self.tree.get(self.current_node).expect("node exists");
         let children: Vec<_> = node
             .children()
@@ -89,13 +128,13 @@ impl ptree::TreeItem for FileTreeDisplay<'_> {
                     TreeNodeKind::File(providing_mods) => providing_mods.len() > 1,
                 }
             })
-            .map(|node| FileTreeDisplay {
+            .map(|node| Self {
                 tree: self.tree,
                 instance: self.instance,
                 current_node: node.node_id(),
                 kind: self.kind,
             })
             .collect();
-        std::borrow::Cow::Owned(children)
+        Cow::Owned(children)
     }
 }
