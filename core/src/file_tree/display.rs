@@ -19,13 +19,13 @@ use std::io;
 
 use nary_tree::NodeId;
 
-use super::{FileTree, TreeNodeKind};
+use super::{FileTree, ModVec, TreeNodeKind};
 use crate::instance::Instance;
 
 /// Structure to display [`FileTree`]s using [`ptree`].
 #[derive(Clone)]
 pub struct FileTreeDisplay<'a> {
-    tree: &'a FileTree,
+    tree: &'a FileTree<ModVec>,
     instance: &'a dyn Instance,
     current_node: NodeId,
     kind: FileTreeDisplayKind,
@@ -42,7 +42,7 @@ pub enum FileTreeDisplayKind {
 
 impl<'a> FileTreeDisplay<'a> {
     #[must_use]
-    pub fn new(tree: &'a FileTree, instance: &'a dyn Instance, kind: FileTreeDisplayKind) -> Self {
+    pub fn new(tree: &'a FileTree<ModVec>, instance: &'a dyn Instance, kind: FileTreeDisplayKind) -> Self {
         Self {
             tree,
             instance,
@@ -59,7 +59,7 @@ impl ptree::TreeItem for FileTreeDisplay<'_> {
         let node = self.tree.get(self.current_node).expect("node exists");
         match &node.data().kind {
             TreeNodeKind::Dir => write!(f, "📁 {}", style.paint(&node.data().name)),
-            TreeNodeKind::File { providing_mods } => {
+            TreeNodeKind::File(providing_mods) => {
                 write!(
                     f,
                     "📄 {} ('{}')",
@@ -84,9 +84,9 @@ impl ptree::TreeItem for FileTreeDisplay<'_> {
                 match &node.data().kind {
                     TreeNodeKind::Dir => node.traverse_pre_order().any(|node| match node.data().kind {
                         TreeNodeKind::Dir => false,
-                        TreeNodeKind::File { ref providing_mods } => providing_mods.len() > 1,
+                        TreeNodeKind::File(ref providing_mods) => providing_mods.len() > 1,
                     }),
-                    TreeNodeKind::File { providing_mods } => providing_mods.len() > 1,
+                    TreeNodeKind::File(providing_mods) => providing_mods.len() > 1,
                 }
             })
             .map(|node| FileTreeDisplay {

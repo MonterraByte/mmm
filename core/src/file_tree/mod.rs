@@ -30,15 +30,12 @@ use thiserror::Error;
 pub use self::node::{ModVec, TreeNode, TreeNodeKind};
 use crate::instance::{Instance, ModDeclaration, ModIndex};
 
-/// A tree representing the combination of files from multiple mods.
-///
-/// Each node in the tree that represents a file contains the list of mods that provide that file,
-/// sorted from higher priority to lower.
-pub type FileTree = Tree<TreeNode>;
-type FileNodeMut<'a> = NodeMut<'a, TreeNode>;
+/// A tree of files.
+pub type FileTree<F = ()> = Tree<TreeNode<F>>;
+type FileNodeMut<'a> = NodeMut<'a, TreeNode<ModVec>>;
 
 /// Builds a [`FileTree`] from all the enabled mods in the specified instance.
-pub fn build_path_tree(instance: &impl Instance) -> Result<FileTree, TreeBuildError> {
+pub fn build_path_tree(instance: &impl Instance) -> Result<FileTree<ModVec>, TreeBuildError> {
     let mut tree = TreeBuilder::new()
         .with_root(TreeNode {
             name: CompactString::const_new("."),
@@ -66,7 +63,7 @@ pub fn build_path_tree(instance: &impl Instance) -> Result<FileTree, TreeBuildEr
 }
 
 fn iter_dir(
-    tree: &mut FileTree,
+    tree: &mut FileTree<ModVec>,
     mod_index: ModIndex,
     dir: PathBuf,
     node: NodeId,
@@ -114,7 +111,7 @@ fn iter_dir(
     Ok(())
 }
 
-fn find_child_with_name(tree: &FileTree, parent: NodeId, name: &str) -> Option<NodeId> {
+fn find_child_with_name(tree: &FileTree<ModVec>, parent: NodeId, name: &str) -> Option<NodeId> {
     let parent = tree.get(parent).expect("node exists");
     for child in parent.children() {
         if child.data().name == name {
@@ -134,7 +131,7 @@ fn create_file_node(mut parent: FileNodeMut, mod_index: ModIndex, name: &str) ->
     parent
         .append(TreeNode {
             name: name.into(),
-            kind: TreeNodeKind::File { providing_mods: smallvec![mod_index] },
+            kind: TreeNodeKind::File(smallvec![mod_index]),
         })
         .node_id()
 }
@@ -147,7 +144,7 @@ fn add_to_existing_node(
     let kind = &mut node.data().kind;
     match (kind, expect_dir) {
         (TreeNodeKind::Dir, true) => Ok(()),
-        (TreeNodeKind::File { providing_mods }, false) => {
+        (TreeNodeKind::File(providing_mods), false) => {
             providing_mods.push(mod_index);
             Ok(())
         }
@@ -170,7 +167,12 @@ impl From<io::Error> for UnresolvedTreeBuildError {
 }
 
 impl UnresolvedTreeBuildError {
-    fn with_context(self, tree: &FileTree, mod_decl: &ModDeclaration, instance: &impl Instance) -> TreeBuildError {
+    fn with_context(
+        self,
+        tree: &FileTree<ModVec>,
+        mod_decl: &ModDeclaration,
+        instance: &impl Instance,
+    ) -> TreeBuildError {
         match self {
             Self::Io(err) => TreeBuildError::Io(err),
             Self::TypeMismatch(node_id) => {
