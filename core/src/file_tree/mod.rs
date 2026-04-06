@@ -23,7 +23,7 @@ use std::io;
 use std::path::PathBuf;
 
 use compact_str::CompactString;
-use nary_tree::{NodeId, NodeMut, Tree, TreeBuilder};
+use nary_tree::{NodeId, NodeMut, NodeRef, Tree, TreeBuilder};
 use smallvec::smallvec;
 use thiserror::Error;
 
@@ -33,6 +33,8 @@ use crate::instance::{Instance, ModDeclaration, ModIndex};
 /// A tree of files.
 pub type FileTree<F = ()> = Tree<TreeNode<F>>;
 type FileNodeMut<'a> = NodeMut<'a, TreeNode<ModVec>>;
+
+pub type TreeNodeRef<'a, F = ()> = NodeRef<'a, TreeNode<F>>;
 
 /// Builds a [`FileTree`] from all the enabled mods in the specified instance.
 pub fn build_path_tree(instance: &impl Instance) -> Result<FileTree<ModVec>, TreeBuildError> {
@@ -177,10 +179,8 @@ impl UnresolvedTreeBuildError {
             Self::Io(err) => TreeBuildError::Io(err),
             Self::TypeMismatch(node_id) => {
                 let conflict_node = tree.get(node_id).expect("node exists");
-                let expected_dir = matches!(&conflict_node.data().kind, TreeNodeKind::File { .. });
-
-                let ancestors: Vec<_> = conflict_node.ancestors().collect();
-                let node_path: PathBuf = ancestors.iter().rev().map(|node| &node.data().name).collect();
+                let expected_dir = !matches!(&conflict_node.data().kind, TreeNodeKind::Dir);
+                let node_path = node_path(&conflict_node);
 
                 let mut conflicting_mod_names = Vec::new();
                 for other_mod in instance.mods() {
@@ -226,4 +226,16 @@ pub enum TreeBuildError {
     Io(#[from] io::Error),
     #[error("{0}")]
     TypeMismatch(String),
+}
+
+/// Returns the path from the root to the specified node.
+#[must_use]
+fn node_path<F>(node: &TreeNodeRef<F>) -> PathBuf {
+    let ancestors: Vec<_> = node.ancestors().collect();
+    ancestors
+        .iter()
+        .rev()
+        .chain(std::iter::once(node))
+        .map(|node| node.data().name.as_str())
+        .collect()
 }
