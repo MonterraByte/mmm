@@ -204,16 +204,16 @@ impl UnresolvedTreeBuildError {
 
                 let mod_name = mod_decl.name();
                 let joined_conflicting_mod_names = itertools::join(conflicting_mod_names, "', '");
-                match &conflict_node.data().kind {
-                    TreeNodeKind::Dir => TreeBuildError::TypeMismatch(format!(
+                TreeBuildError::TypeMismatch(match &conflict_node.data().kind {
+                    TreeNodeKind::Dir => format!(
                         "'{}' is used as both a directory and a file by different mods: it's a file in '{mod_name}', but a directory in '{joined_conflicting_mod_names}'",
                         node_path.display(),
-                    )),
-                    TreeNodeKind::File { .. } => TreeBuildError::TypeMismatch(format!(
+                    ),
+                    TreeNodeKind::File(_) => format!(
                         "'{}' is used as both a directory and a file by different mods: it's a directory in '{mod_name}', but a file in '{joined_conflicting_mod_names}'",
                         node_path.display(),
-                    )),
-                }
+                    ),
+                }.into_boxed_str())
             }
         }
     }
@@ -225,7 +225,7 @@ pub enum TreeBuildError {
     #[error("failed to read directory")]
     Io(#[from] io::Error),
     #[error("{0}")]
-    TypeMismatch(String),
+    TypeMismatch(Box<str>),
 }
 
 /// Returns the path from the root to the specified node.
