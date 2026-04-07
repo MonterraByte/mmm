@@ -1071,6 +1071,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_ltreeview"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6afc56194563064faa79d5acc18f2a4d32bd6dfacc949e1d5b5c8058a46e82cf"
+dependencies = [
+ "egui",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2182,11 +2191,14 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "clap",
+ "compact_str",
  "eframe",
  "egui_extras",
+ "egui_ltreeview",
  "foldhash 0.2.0",
  "mmm-core",
  "mmm-edit",
+ "nary_tree",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2230,8 +2242,7 @@ dependencies = [
 [[package]]
 name = "nary_tree"
 version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "deef62e87b5c537cdee7d5afe1bb407085b01468f112913492d87b2f8a985acf"
+source = "git+https://github.com/MonterraByte/nary-tree?rev=0ee83bb2b144f9ef72fa8a35941e611f5c63e3f7#0ee83bb2b144f9ef72fa8a35941e611f5c63e3f7"
 dependencies = [
  "slab",
  "snowflake",

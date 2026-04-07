@@ -10,7 +10,7 @@ compact_str = { workspace = true }
 const_format = { version = "0.2" }
 itertools = "0.14"
 ptree = { workspace = true }
-nary_tree = "0.4"
+nary_tree = { workspace = true }
 recycle_vec = "1.1"
 replace_with = "0.1"
 serde = { version = "1", features = ["derive"] }

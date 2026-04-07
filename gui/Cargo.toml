@@ -11,11 +11,14 @@ path = "src/main.rs"
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
+compact_str = { workspace = true }
 foldhash = { workspace = true }
 mmm-core = { path = "../core" }
 mmm-edit = { path = "../edit" }
+nary_tree = { workspace = true }
 eframe = "0.34"
 egui_extras = "0.34"
+egui_ltreeview = "0.7"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

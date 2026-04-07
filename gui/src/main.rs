@@ -16,7 +16,11 @@
 #![forbid(unsafe_code)]
 
 mod background_task;
+mod details;
+mod tree;
+mod utils;
 
+use std::collections::hash_map::Entry;
 use std::ffi::OsStr;
 use std::fmt::Write;
 use std::fs;
@@ -31,7 +35,7 @@ use egui::{
     TextWrapMode, Ui,
 };
 use egui_extras::{Column, TableBuilder};
-use foldhash::HashSet;
+use foldhash::{HashMap, HashSet};
 use tracing::{Level, error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -39,6 +43,7 @@ use mmm_core::instance::{Instance, ModDeclaration, ModEntryKind, ModIndex, ModOr
 use mmm_edit::EditableInstance;
 
 use crate::background_task::{BackgroundTask, StatusString, spawn_background_thread};
+use crate::details::ModDetailsWindow;
 
 const APP_NAME: &str = "zone.monterra.modmanager";
 
@@ -73,6 +78,7 @@ pub struct ModManagerUi {
     background_task_status: StatusString,
     selection: HashSet<ModOrderIndex>,
     last_selected: Option<ModOrderIndex>,
+    open_mod_details: HashMap<ModIndex, ModDetailsWindow>,
     create_new_mod_modal: CreateNewModModal,
     rename_mod_modal: RenameModModal,
     remove_selected_mods_modal: RemoveSelectedModsModal,
@@ -89,6 +95,7 @@ impl ModManagerUi {
             background_task_status,
             selection: HashSet::default(),
             last_selected: None,
+            open_mod_details: HashMap::default(),
             create_new_mod_modal: CreateNewModModal::default(),
             rename_mod_modal: RenameModModal::default(),
             remove_selected_mods_modal: RemoveSelectedModsModal::default(),
@@ -106,11 +113,28 @@ impl App for ModManagerUi {
             self.center_panel(ui);
         });
 
+        self.open_mod_details
+            .retain(|idx, window| window.update(ui, &self.instance, *idx).into());
+
         self.instance.save();
     }
 }
 
 impl ModManagerUi {
+    fn mod_removed(&mut self, removed_mod: ModIndex) {
+        // Mod details windows are stored with an associated mod index. When a mod is removed,
+        // mod indices greater than the removed mod's are shifted to the left, so that needs to be fixed up here.
+        // Also, a details window for a removed mod obviously needs to be closed too.
+        let mod_details_windows_to_reinsert = self
+            .open_mod_details
+            .extract_if(|idx, _| *idx >= removed_mod) // remove all affected ones
+            .filter(|(idx, _)| *idx != removed_mod) // discard the one for the removed mod
+            .collect::<Vec<_>>();
+        for (idx, window) in mod_details_windows_to_reinsert {
+            self.open_mod_details.insert(idx.saturating_sub(1u32), window);
+        }
+    }
+
     fn center_panel(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             let response = ui.button("Add mod");
@@ -254,6 +278,21 @@ impl ModManagerUi {
                             self.selection.clear();
                             self.selection.insert(row_index);
                             self.last_selected = Some(row_index);
+                        }
+                    }
+
+                    if response.double_clicked() && mod_decl.kind() == ModEntryKind::Mod {
+                        let entry = self
+                            .open_mod_details
+                            .entry(order_entry.mod_index())
+                            .and_modify(ModDetailsWindow::raise);
+                        if matches!(entry, Entry::Vacant(_)) {
+                            match ModDetailsWindow::new(&self.instance, order_entry.mod_index()) {
+                                Ok(window) => {
+                                    entry.or_insert(window);
+                                }
+                                Err(err) => error!(?err, "failed to spawn thread"),
+                            }
                         }
                     }
 
@@ -431,7 +470,37 @@ impl ModManagerUi {
                     }
 
                     if ui.button("Delete").clicked() {
-                        let task = self.remove_selected_mods_modal.do_task(&mut self.instance);
+                        // Sort indices and iterate backwards so that they can be removed in order without being invalidated.
+                        self.remove_selected_mods_modal.selected.sort_unstable();
+                        let paths: Vec<_> = self
+                            .remove_selected_mods_modal
+                            .selected
+                            .iter()
+                            .rev()
+                            .filter_map(|idx| self.instance.remove_mod(*idx))
+                            .collect();
+                        while let Some(idx) = self.remove_selected_mods_modal.selected.pop() {
+                            self.mod_removed(idx);
+                        }
+
+                        let task: BackgroundTask = Box::new(move |status| {
+                            for path in paths {
+                                {
+                                    let mut s = status.lock().expect("lock is not poisoned");
+                                    s.clear();
+                                    let _ = write!(
+                                        s,
+                                        "Deleting mod {}",
+                                        path.file_name().unwrap_or(OsStr::new("?")).display()
+                                    );
+                                }
+
+                                info!("removing mod directory '{}'", path.display());
+                                if let Err(err) = fs::remove_dir_all(&path) {
+                                    error!("failed to delete '{}': {}", path.display(), err);
+                                }
+                            }
+                        });
                         self.spawn_background_task(task);
                         self.selection.clear();
                         self.last_selected = None;
@@ -489,29 +558,31 @@ impl RenameModModal {
 }
 
 #[derive(Debug, Default)]
-struct RemoveSelectedModsModal(Vec<ModIndex>);
+struct RemoveSelectedModsModal {
+    pub selected: Vec<ModIndex>,
+}
 
 impl RemoveSelectedModsModal {
     fn open(&mut self, instance: &EditableInstance, selection: &HashSet<ModOrderIndex>) {
-        self.0.clear();
-        self.0
+        self.selected.clear();
+        self.selected
             .extend(selection.iter().map(|idx| instance.mod_order()[*idx].mod_index()));
-        self.0.sort_unstable_by_key(|idx| instance.mods()[*idx].name());
+        self.selected.sort_unstable_by_key(|idx| instance.mods()[*idx].name());
     }
 
     fn is_open(&self) -> bool {
-        !self.0.is_empty()
+        !self.selected.is_empty()
     }
 
     fn close(&mut self) {
-        self.0.clear();
+        self.selected.clear();
     }
 
     fn display(&self, instance: &EditableInstance, ui: &mut Ui) {
-        match self.0.len() {
+        match self.selected.len() {
             0 => unreachable!(),
             1 => {
-                let mod_index = *self.0.first().expect("len is 1");
+                let mod_index = *self.selected.first().expect("len is 1");
                 let mod_decl = &instance.mods()[mod_index];
 
                 ui.heading(if mod_decl.kind() == ModEntryKind::Separator {
@@ -534,39 +605,13 @@ impl RemoveSelectedModsModal {
                 ScrollArea::both().show_rows(ui, row_height, len, |ui, rows| {
                     ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
 
-                    for idx in self.0.get(rows).expect("range is within bounds") {
+                    for idx in self.selected.get(rows).expect("range is within bounds") {
                         let mod_decl = &instance.mods()[*idx];
                         ui.label(mod_decl.name().as_str());
                     }
                 });
             }
         }
-    }
-
-    fn do_task(&mut self, instance: &mut EditableInstance) -> BackgroundTask {
-        // Sort indices from largest to smallest so that they can be removed in order without being invalidated.
-        self.0.sort_unstable_by(|a, b| b.cmp(a));
-        let paths: Vec<_> = self.0.iter().filter_map(|idx| instance.remove_mod(*idx)).collect();
-        self.0.clear();
-
-        Box::new(move |status| {
-            for path in paths {
-                {
-                    let mut s = status.lock().expect("lock is not poisoned");
-                    s.clear();
-                    let _ = write!(
-                        s,
-                        "Deleting mod {}",
-                        path.file_name().unwrap_or(OsStr::new("?")).display()
-                    );
-                }
-
-                info!("removing mod directory '{}'", path.display());
-                if let Err(err) = fs::remove_dir_all(&path) {
-                    error!("failed to delete '{}': {}", path.display(), err);
-                }
-            }
-        })
     }
 }
 
