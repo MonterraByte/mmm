@@ -27,6 +27,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use camino::{Utf8Component, Utf8Path};
 use compact_str::CompactString;
 use nary_tree::{NodeId, NodeMut, NodeRef, Tree, TreeBuilder};
 use smallvec::{SmallVec, smallvec};
@@ -180,6 +181,70 @@ impl<F, Value: ProvideValue<F>, Counter: Count> FileTreeBuilder<F, Value, Counte
 
         Ok(())
     }
+
+    /// Creates a file node given the specified path from the root, creating any missing parent directory nodes.
+    pub fn create_file_node_with_parents(
+        &self,
+        tree: &mut FileTree<F>,
+        path: &Utf8Path,
+    ) -> Result<NodeId, CreateFileNodeError> {
+        let mut components = path.components();
+        let Some(Utf8Component::Normal(file_name)) = components.next_back() else {
+            return Err(CreateFileNodeError::NonNormalFilename);
+        };
+
+        let mut parent = tree.root_id().expect("has root node");
+        for component in path.components() {
+            match component {
+                Utf8Component::Normal(name) => {
+                    parent = if let Some(next_node_id) = find_child_with_name(tree, parent, name) {
+                        let next_node = tree.get(next_node_id).expect("node exists");
+                        if !matches!(next_node.data().kind, TreeNodeKind::Dir) {
+                            return Err(CreateFileNodeError::FileExists(node_path(&next_node).into_boxed_path()));
+                        }
+                        next_node_id
+                    } else {
+                        self.counter.dir_added();
+                        create_dir_node(tree.get_mut(parent).expect("node exists"), name)
+                    };
+                }
+                Utf8Component::CurDir => {}
+                other => {
+                    return Err(CreateFileNodeError::InvalidPathComponent(
+                        other.to_string().into_boxed_str(),
+                    ));
+                }
+            }
+        }
+
+        if let Some(id) = find_child_with_name(tree, parent, file_name) {
+            let node = tree.get_mut(id).expect("node exists");
+            self.value
+                .add_to_existing_node(node, false)
+                .map_err(|_| CreateFileNodeError::DirectoryExists)?;
+            self.counter.file_appended();
+            Ok(id)
+        } else {
+            self.counter.file_added();
+            self.counter.file_appended();
+            Ok(self
+                .value
+                .create_file_node(tree.get_mut(parent).expect("node exists"), file_name))
+        }
+    }
+}
+
+/// Error type returned by [`create_file_node_with_parents`](FileTreeBuilder::create_file_node_with_parents).
+#[derive(Debug, Error)]
+pub enum CreateFileNodeError {
+    #[error("specified path does not end in a normal component")]
+    NonNormalFilename,
+    #[error("specified path contains invalid component {0}")]
+    InvalidPathComponent(Box<str>),
+    #[error("cannot create parent node '{0}' for the specified path, as there's a file node there already")]
+    FileExists(Box<Utf8Path>),
+    #[error("cannot create a file node at the specified path, as there's a directory node there already")]
+    DirectoryExists,
 }
 
 /// A value provider for use with [`FileTreeBuilder`].
