@@ -27,7 +27,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use camino::{Utf8Component, Utf8Path};
+use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
 use nary_tree::{NodeId, NodeMut, NodeRef, Tree, TreeBuilder};
 use smallvec::{SmallVec, smallvec};
@@ -440,12 +440,10 @@ impl UnresolvedIterDirError {
                 let joined_conflicting_mod_names = itertools::join(conflicting_mod_names, "', '");
                 IterDirError::TypeMismatch(match &conflict_node.data().kind {
                     TreeNodeKind::Dir => format!(
-                        "'{}' is used as both a directory and a file by different mods: it's a file in '{mod_name}', but a directory in '{joined_conflicting_mod_names}'",
-                        node_path.display(),
+                        "'{node_path}' is used as both a directory and a file by different mods: it's a file in '{mod_name}', but a directory in '{joined_conflicting_mod_names}'",
                     ),
                     TreeNodeKind::File(_) => format!(
-                        "'{}' is used as both a directory and a file by different mods: it's a directory in '{mod_name}', but a file in '{joined_conflicting_mod_names}'",
-                        node_path.display(),
+                        "'{node_path}' is used as both a directory and a file by different mods: it's a directory in '{mod_name}', but a file in '{joined_conflicting_mod_names}'",
                     ),
                 }.into_boxed_str())
             }
@@ -458,9 +456,7 @@ impl UnresolvedIterDirError {
             Self::TypeMismatch(node_id) => {
                 let conflict_node = tree.get(node_id).expect("node exists");
                 let path = node_path(&conflict_node);
-                IterDirError::TypeMismatch(
-                    format!("'{}' is used as both a directory and a file", path.display()).into_boxed_str(),
-                )
+                IterDirError::TypeMismatch(format!("'{path}' is used as both a directory and a file").into_boxed_str())
             }
         }
     }
@@ -487,7 +483,7 @@ fn find_child_with_name<F>(tree: &FileTree<F>, parent: NodeId, name: &str) -> Op
 
 /// Returns the path from the root to the specified node.
 #[must_use]
-fn node_path<F>(node: &TreeNodeRef<F>) -> PathBuf {
+fn node_path<F>(node: &TreeNodeRef<F>) -> Utf8PathBuf {
     let ancestors: Vec<_> = node.ancestors().collect();
     ancestors
         .iter()
