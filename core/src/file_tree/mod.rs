@@ -21,7 +21,10 @@ mod node;
 use std::fs;
 use std::io;
 use std::marker::PhantomData;
+use std::ops::Deref;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use compact_str::CompactString;
 use nary_tree::{NodeId, NodeMut, NodeRef, Tree, TreeBuilder};
@@ -49,16 +52,23 @@ pub fn new_tree<F>() -> FileTree<F> {
 }
 
 /// Struct for building out a [`FileTree`] in a configurable way.
-pub struct FileTreeBuilder<F = (), Value: ProvideValue<F> = Unit> {
+pub struct FileTreeBuilder<F = (), Value: ProvideValue<F> = Unit, Counter: Count = NoCounter> {
     value: Value,
+    counter: Counter,
     _file_type: PhantomData<F>,
 }
+
+pub type FileTreeBuilderWithCounter<F = (), Value = Unit> = FileTreeBuilder<F, Value, Arc<Counters>>;
 
 impl FileTreeBuilder {
     /// Creates a new `FileTreeBuilder`.
     #[must_use]
     pub const fn new() -> FileTreeBuilder<()> {
-        FileTreeBuilder { value: Unit, _file_type: PhantomData }
+        FileTreeBuilder {
+            value: Unit,
+            counter: NoCounter,
+            _file_type: PhantomData,
+        }
     }
 }
 
@@ -68,15 +78,28 @@ impl Default for FileTreeBuilder {
     }
 }
 
-impl<F, Value: ProvideValue<F>> FileTreeBuilder<F, Value> {
+impl<F, Value: ProvideValue<F>, Counter: Count> FileTreeBuilder<F, Value, Counter> {
+    /// Returns a new `FileTreeBuilder` with the specified counter.
+    pub fn with_counter<C: Count>(self, counter: C) -> FileTreeBuilder<F, Value, C> {
+        FileTreeBuilder {
+            value: self.value,
+            counter,
+            _file_type: PhantomData,
+        }
+    }
+
     /// Returns a new `FileTreeBuilder` that will create file nodes with the specified value in their `Vec`s.
     #[inline]
-    pub fn with_item_value<T, Arr>(self, value: T) -> FileTreeBuilder<SmallVec<Arr>, VariableVec<T>>
+    pub fn with_item_value<T, Arr>(self, value: T) -> FileTreeBuilder<SmallVec<Arr>, VariableVec<T>, Counter>
     where
         T: Clone,
         Arr: smallvec::Array<Item = T>,
     {
-        FileTreeBuilder { value: VariableVec(value), _file_type: PhantomData }
+        FileTreeBuilder {
+            value: VariableVec(value),
+            counter: self.counter,
+            _file_type: PhantomData,
+        }
     }
 
     /// Iterates over the specified directory, creating node that correspond to each entry in the provided tree.
@@ -103,12 +126,16 @@ impl<F, Value: ProvideValue<F>> FileTreeBuilder<F, Value> {
                     self.value
                         .add_to_existing_node(tree.get_mut(child_node).expect("node exists"), entry_type.is_dir())
                         .map_err(UnresolvedIterDirError::TypeMismatch)?;
+                    self.counter.file_appended();
                     child_node
                 } else {
                     let parent = tree.get_mut(node).expect("node exists");
                     if entry_type.is_dir() {
+                        self.counter.dir_added();
                         create_dir_node(parent, &entry_name)
                     } else {
+                        self.counter.file_added();
+                        self.counter.file_appended();
                         self.value.create_file_node(parent, &entry_name)
                     }
                 };
@@ -214,6 +241,87 @@ fn create_dir_node<F>(mut parent: TreeNodeMut<F>, name: &str) -> NodeId {
     parent
         .append(TreeNode { name: name.into(), kind: TreeNodeKind::Dir })
         .node_id()
+}
+
+/// A counter for use with [`FileTreeBuilder`].
+pub trait Count {
+    fn file_added(&self);
+    fn file_appended(&self);
+    fn dir_added(&self);
+}
+
+/// A [counter](Count) that does not count.
+pub struct NoCounter;
+
+impl Count for NoCounter {
+    fn file_added(&self) {}
+    fn file_appended(&self) {}
+    fn dir_added(&self) {}
+}
+
+/// A [counter](Count) that does count.
+#[derive(Default)]
+pub struct Counters {
+    files: AtomicUsize,
+    unique_files: AtomicUsize,
+    directories: AtomicUsize,
+}
+
+impl Counters {
+    /// Creates a new counter.
+    #[must_use]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    /// Returns the number of times file nodes were created or updated.
+    #[must_use]
+    pub fn files(&self) -> usize {
+        self.files.load(Ordering::Relaxed)
+    }
+
+    /// Returns the number of file nodes created.
+    #[must_use]
+    pub fn unique_files(&self) -> usize {
+        self.unique_files.load(Ordering::Relaxed)
+    }
+
+    /// Returns the number of directory nodes created.
+    #[must_use]
+    pub fn directories(&self) -> usize {
+        self.directories.load(Ordering::Relaxed)
+    }
+}
+
+impl Count for Counters {
+    fn file_added(&self) {
+        self.files.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn file_appended(&self) {
+        self.unique_files.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn dir_added(&self) {
+        self.directories.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+impl<C: Count> Count for Arc<C> {
+    #[inline]
+    fn file_added(&self) {
+        self.deref().file_added();
+    }
+
+    #[inline]
+    fn file_appended(&self) {
+        self.deref().file_appended();
+    }
+
+    #[inline]
+    fn dir_added(&self) {
+        self.deref().dir_added();
+    }
 }
 
 #[derive(Debug)]
