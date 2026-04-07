@@ -9,7 +9,7 @@ jobs:
         with:
           components: rustfmt
       - uses: r7kamura/rust-problem-matchers@v1
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - run: cargo fmt --check
 
   check:
@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: dtolnay/rust-toolchain@stable
       - uses: r7kamura/rust-problem-matchers@v1
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - run: cargo check --workspace --all-targets
 
   clippy:
@@ -31,5 +31,5 @@ jobs:
         with:
           components: clippy
       - uses: r7kamura/rust-problem-matchers@v1
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - run: cargo clippy --workspace --all-targets
