@@ -13,6 +13,40 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+//! Miscellaneous functions.
+
+use std::cmp::Ordering;
+use std::sync::LazyLock;
+
+use icu_collator::options::{AlternateHandling, CaseLevel, CollatorOptions, Strength};
+use icu_collator::preferences::{CollationCaseFirst, CollationNumericOrdering};
+use icu_collator::{Collator, CollatorBorrowed, CollatorPreferences};
+
+use mmm_core::file_tree::{TreeNode, TreeNodeKind};
+
+static COLLATOR: LazyLock<CollatorBorrowed<'static>> = LazyLock::new(|| {
+    let mut prefs = CollatorPreferences::default();
+    prefs.numeric_ordering = Some(CollationNumericOrdering::True);
+    prefs.case_first = Some(CollationCaseFirst::False);
+
+    let mut options = CollatorOptions::default();
+    options.strength = Some(Strength::Tertiary);
+    options.alternate_handling = Some(AlternateHandling::NonIgnorable);
+    options.case_level = Some(CaseLevel::Off);
+
+    Collator::try_new(prefs, options).unwrap()
+});
+
+/// A comparator for [`TreeNode`]s that sorts directories before files
+/// and sorts names using the CLDR Collation Algorithm provided by ICU4X.
+pub fn node_ord<F>(left: &TreeNode<F>, right: &TreeNode<F>) -> Ordering {
+    match (&left.kind, &right.kind) {
+        (TreeNodeKind::Dir, TreeNodeKind::File(_)) => Ordering::Less,
+        (TreeNodeKind::File(_), TreeNodeKind::Dir) => Ordering::Greater,
+        _ => COLLATOR.compare(&left.name, &right.name),
+    }
+}
+
 /// Moves multiple items in a slice to the specified index.
 ///
 /// When moving items to the right, the target index needs to be adjusted to compensate for the items shifted left,

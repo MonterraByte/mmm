@@ -17,7 +17,7 @@
 
 mod instance;
 mod r#mod;
-mod util;
+pub mod util;
 mod writer;
 
 pub use instance::{EditableInstance, InstanceOpenError};
