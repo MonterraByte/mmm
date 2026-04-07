@@ -481,6 +481,30 @@ fn find_child_with_name<F>(tree: &FileTree<F>, parent: NodeId, name: &str) -> Op
         .map(NodeRef::node_id)
 }
 
+/// Finds a node in the tree by its path relative to the root.
+#[must_use]
+pub fn find_node_by_path<'tree, F>(tree: &'tree FileTree<F>, path: &Utf8Path) -> Option<TreeNodeRef<'tree, F>> {
+    let mut node = tree.root().expect("has root node");
+
+    for component in path.components() {
+        match component {
+            Utf8Component::Normal(name) => node = node.children().find(|child| child.data().name == name)?,
+            Utf8Component::ParentDir => {
+                let parent = node.parent()?.node_id();
+                node = tree.get(parent).expect("node exists");
+            }
+            Utf8Component::CurDir => {
+                if matches!(node.data().kind, TreeNodeKind::File(_)) {
+                    return None;
+                }
+            }
+            Utf8Component::Prefix(_) | Utf8Component::RootDir => return None,
+        }
+    }
+
+    Some(node)
+}
+
 /// Returns the path from the root to the specified node.
 #[must_use]
 fn node_path<F>(node: &TreeNodeRef<F>) -> Utf8PathBuf {
