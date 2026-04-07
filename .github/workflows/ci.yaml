@@ -33,3 +33,11 @@ jobs:
       - uses: r7kamura/rust-problem-matchers@v1
       - uses: actions/checkout@v6
       - run: cargo clippy --workspace --all-targets
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: r7kamura/rust-problem-matchers@v1
+      - uses: actions/checkout@v6
+      - run: cargo test --workspace
