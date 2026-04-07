@@ -14,6 +14,8 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![forbid(unsafe_code)]
+#![feature(os_string_truncate)]
 
 pub mod file_tree;
 pub mod instance;
+pub mod util;
