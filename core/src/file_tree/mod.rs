@@ -17,6 +17,7 @@
 
 pub mod display;
 mod node;
+pub mod util;
 
 use std::fs;
 use std::io;
