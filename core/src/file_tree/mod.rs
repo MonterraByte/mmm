@@ -507,7 +507,7 @@ pub fn find_node_by_path<'tree, F>(tree: &'tree FileTree<F>, path: &Utf8Path) ->
 
 /// Returns the path from the root to the specified node.
 #[must_use]
-fn node_path<F>(node: &TreeNodeRef<F>) -> Utf8PathBuf {
+pub fn node_path<F>(node: &TreeNodeRef<F>) -> Utf8PathBuf {
     let ancestors: Vec<_> = node.ancestors().collect();
     ancestors
         .iter()

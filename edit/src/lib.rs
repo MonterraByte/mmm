@@ -15,6 +15,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod archive;
 mod instance;
 mod r#mod;
 pub mod util;
