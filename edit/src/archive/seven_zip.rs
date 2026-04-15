@@ -73,10 +73,13 @@ impl ArchiveFormat for SevenZip {
     ) -> Result<(), anyhow::Error> {
         let mut path_builder = NodePathBuilder::new(dir);
 
+        let is_solid = self.0.archive().is_solid;
         self.0.for_each_entries(|entry, reader| {
-            if !entry.is_directory
-                && let Some(target) = selection.get_target_node(file_tree, Utf8Path::new(&entry.name))
-            {
+            if entry.is_directory {
+                return Ok(true); // continue iterating
+            }
+
+            if let Some(target) = selection.get_target_node(file_tree, Utf8Path::new(&entry.name)) {
                 let parent_dir = path_builder.reset_and_push_ancestors(&target);
                 fs::create_dir_all(parent_dir)?;
 
@@ -87,6 +90,11 @@ impl ArchiveFormat for SevenZip {
 
                 let file_times = FileTimes::new().set_modified(entry.last_modified_date().into());
                 let _ = file.set_times(file_times);
+            } else if is_solid {
+                // When decompressing a solid archive, all data MUST be read.
+                // If we skip a file without reading out its data, the files that come after
+                // will be extracted incorrectly, resulting in ChecksumVerificationFailed errors.
+                io::copy(reader, &mut io::sink())?;
             }
 
             Ok(true) // continue iterating
