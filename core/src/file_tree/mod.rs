@@ -194,7 +194,7 @@ impl<F, Value: ProvideValue<F>, Counter: Count> FileTreeBuilder<F, Value, Counte
         };
 
         let mut parent = tree.root_id().expect("has root node");
-        for component in path.components() {
+        for component in components {
             match component {
                 Utf8Component::Normal(name) => {
                     parent = if let Some(next_node_id) = find_child_with_name(tree, parent, name) {
