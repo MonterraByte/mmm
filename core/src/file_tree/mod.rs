@@ -512,6 +512,7 @@ pub fn node_path<F>(node: &TreeNodeRef<F>) -> Utf8PathBuf {
     ancestors
         .iter()
         .rev()
+        .skip(1) // don't add "./" to the start of every path
         .chain(std::iter::once(node))
         .map(|node| node.data().name.as_str())
         .collect()
