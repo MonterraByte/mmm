@@ -22,6 +22,7 @@ use egui::{Id, ScrollArea, Ui};
 use egui_ltreeview::{Action, DragAndDrop, TreeView, TreeViewState};
 use nary_tree::NodeId;
 
+use mmm_core::file_tree::util::OptionExt;
 use mmm_core::file_tree::{FileTree, TreeNodeKind, TreeNodeRef};
 
 /// [`egui_ltreeview`] wrapper for displaying [`FileTree`]s.
@@ -170,9 +171,7 @@ where
     }
 
     fn default_open(&self) -> bool {
-        let get_id = |node: TreeNodeRef<T>| node.node_id();
-        let one_or_no_children =
-            |node: &TreeNodeRef<T>| node.first_child().map(get_id) == node.last_child().map(get_id);
+        let one_or_no_children = |node: &TreeNodeRef<T>| node.first_child().node_id() == node.last_child().node_id();
         self.node().parent().is_some_and(|parent| one_or_no_children(&parent))
     }
 }

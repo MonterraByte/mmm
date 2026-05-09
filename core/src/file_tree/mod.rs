@@ -34,6 +34,7 @@ use smallvec::{SmallVec, smallvec};
 use thiserror::Error;
 
 pub use self::node::{ModVec, TreeNode, TreeNodeKind};
+use crate::file_tree::util::OptionExt;
 use crate::instance::{Instance, ModDeclaration, ModIndex};
 
 /// A tree of files.
@@ -477,8 +478,7 @@ fn find_child_with_name<F>(tree: &FileTree<F>, parent: NodeId, name: &str) -> Op
         .expect("node exists")
         .children()
         .find(|child| child.data().name == name)
-        .as_ref()
-        .map(NodeRef::node_id)
+        .node_id()
 }
 
 /// Finds a node in the tree by its path relative to the root.

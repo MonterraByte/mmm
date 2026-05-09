@@ -17,6 +17,7 @@
 
 use std::path::{Path, PathBuf};
 
+use nary_tree::{NodeId, NodeMut, NodeRef};
 use recycle_vec::VecExt;
 
 use super::TreeNodeRef;
@@ -84,3 +85,48 @@ impl NodePathBuilder<'_> {
         self.path
     }
 }
+
+pub trait OptionExt {
+    fn node_id(&self) -> Option<NodeId>;
+}
+
+macro_rules! option_ext_impl {
+    ($type:tt$($type2:tt)?) => {
+        impl<'a, T> OptionExt for Option<$type$($type2)?<'a, T>> {
+            fn node_id(&self) -> Option<NodeId> {
+                if let Some(node) = self {
+                    Some(node.node_id())
+                } else {
+                    None
+                }
+            }
+        }
+    };
+}
+
+option_ext_impl!(NodeRef);
+option_ext_impl!(&NodeRef);
+option_ext_impl!(NodeMut);
+option_ext_impl!(&NodeMut);
+
+pub trait ResultExt<E> {
+    fn node_id(self) -> Result<NodeId, E>;
+}
+
+macro_rules! result_ext_impl {
+    ($type:tt$($type2:tt)?) => {
+        impl<'a, T, E> ResultExt<E> for Result<$type$($type2)?<'a, T>, E> {
+            fn node_id(self) -> Result<NodeId, E> {
+                match self {
+                    Ok(node) => Ok(node.node_id()),
+                    Err(err) => Err(err),
+                }
+            }
+        }
+    };
+}
+
+result_ext_impl!(NodeRef);
+result_ext_impl!(&NodeRef);
+result_ext_impl!(NodeMut);
+result_ext_impl!(&NodeMut);
