@@ -364,7 +364,7 @@ impl<'de> Deserialize<'de> for ModOrderEntry {
 
 macro_rules! custom_index {
     ($name:ident, $doc:literal) => {
-        // Not `usize` to reduce memory usage and cache locality. 2^32 - 1 mods are surely enough for everyone.
+        // Not `usize` to reduce memory usage and improve cache locality. 2^32 - 1 mods are surely enough for everyone.
         #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
         #[doc = $doc]
         pub struct $name(u32);
