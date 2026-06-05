@@ -25,19 +25,22 @@ use std::ffi::OsStr;
 use std::fmt::Write;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 use anyhow::Context as _;
 use clap::Parser;
-use eframe::{App, Frame, NativeOptions, egui};
+use eframe::{App, Frame, NativeOptions, egui, egui_wgpu, wgpu};
 use egui::{
     Align, CentralPanel, Color32, Id, Layout, Modal, Panel, Popup, ScrollArea, Sense, Sides, Stroke, TextStyle,
     TextWrapMode, Ui,
 };
 use egui_extras::{Column, TableBuilder};
+use egui_wgpu::{WgpuSetup, WgpuSetupCreateNew};
 use foldhash::{HashMap, HashSet};
 use tracing::{Level, error, info};
 use tracing_subscriber::EnvFilter;
+use wgpu::{PowerPreference, PresentMode};
 
 use mmm_core::instance::{Instance, ModDeclaration, ModEntryKind, ModIndex, ModOrderIndex};
 use mmm_edit::EditableInstance;
@@ -59,9 +62,7 @@ fn main() -> anyhow::Result<()> {
         EditableInstance::open(&args.instance_path).context("failed to open instance")?
     };
 
-    let mut options = NativeOptions::default();
-    options.viewport.app_id = Some(APP_NAME.into()); // https://github.com/emilk/egui/issues/7872
-    options.viewport.title = Some(format!("mmm — {}", instance.dir().display()));
+    let options = native_options(&instance);
 
     // https://github.com/emilk/egui/issues/5815
     if let Err(err) = eframe::run_native(APP_NAME, options, Box::new(|_ctx| Ok(ModManagerUi::new(instance)))) {
@@ -70,6 +71,44 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn native_options(instance: &EditableInstance) -> NativeOptions {
+    let mut options = NativeOptions::default();
+    options.viewport.app_id = Some(APP_NAME.into()); // https://github.com/emilk/egui/issues/7872
+    options.viewport.title = Some(format!("mmm — {}", instance.dir().display()));
+
+    // egui defaults to `AutoVsync` (https://github.com/emilk/egui/blob/0.34.3/crates/egui-wgpu/src/lib.rs#L335)
+    // which selects `FifoRelaxed` if available, which we don't need.
+    options.wgpu_options.present_mode = PresentMode::Fifo;
+
+    let mut wgpu_setup = WgpuSetupCreateNew::without_display_handle();
+    wgpu_setup.power_preference = PowerPreference::from_env().unwrap_or(PowerPreference::LowPower);
+
+    // Adjusted code from https://github.com/emilk/egui/blob/0.34.3/crates/egui-wgpu/src/setup.rs#L256-L273
+    // to set the memory allocation hint, which drastically reduces the amount of VRAM consumed.
+    wgpu_setup.device_descriptor = Arc::new(|adapter| {
+        let base_limits = if adapter.get_info().backend == wgpu::Backend::Gl {
+            wgpu::Limits::downlevel_webgl2_defaults()
+        } else {
+            wgpu::Limits::default()
+        };
+
+        wgpu::DeviceDescriptor {
+            label: Some("egui wgpu device"),
+            required_limits: wgpu::Limits {
+                // When using a depth buffer, we have to be able to create a texture
+                // large enough for the entire surface, and we want to support 4k+ displays.
+                max_texture_dimension_2d: 8192,
+                ..base_limits
+            },
+            memory_hints: wgpu::MemoryHints::MemoryUsage,
+            ..Default::default()
+        }
+    });
+    options.wgpu_options.wgpu_setup = WgpuSetup::CreateNew(wgpu_setup);
+
+    options
 }
 
 pub struct ModManagerUi {
