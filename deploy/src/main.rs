@@ -78,7 +78,7 @@ fn main() -> anyhow::Result<()> {
     let game_path = args
         .game_path
         .canonicalize()
-        .with_context(|| format!("failed to canonicalize game path '{}'", &args.game_path.display()))?;
+        .with_context(|| format!("failed to canonicalize game path '{}'", args.game_path.display()))?;
     let overlay_mount = OverlayMount::new(staging_dir.path(), &game_path).with_context(|| {
         format!(
             "failed to mount overlay '{}' at game path '{}'",
