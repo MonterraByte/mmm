@@ -31,6 +31,7 @@ use mmm_core::instance::{
     ModOrderEntry, ModOrderIndex, Profile,
 };
 
+use crate::install::staging::{PlaceError, StagedInstall};
 use crate::util::move_multiple;
 use crate::writer::{WriteRequest, WriteTarget, spawn_writer_thread};
 use crate::{Mod, ModInitError};
@@ -222,7 +223,7 @@ impl EditableInstance {
         actual_name
     }
 
-    /// Creates a new mod with the specified name.
+    /// Creates a new empty mod with the specified name.
     pub fn create_mod(&mut self, name: &str, kind: ModEntryKind) -> Result<(), CreateModError> {
         if self.mods().iter().any(|m| m.name() == name) {
             return Err(CreateModError::AlreadyExists);
@@ -235,6 +236,23 @@ impl EditableInstance {
         self.mod_order_mut().push(ModOrderEntry::new(idx));
 
         Mod::init(self, idx).map_err(Into::into)
+    }
+
+    /// Creates a new mod from a [`StagedInstall`] with the specified name.
+    pub fn add_staged_mod(&mut self, name: &str, staged_mod: StagedInstall) -> Result<(), AddStagedModError> {
+        if self.mods().iter().any(|m| m.name() == name) {
+            return Err(AddStagedModError::AlreadyExists);
+        }
+        let mod_decl = ModDeclaration::new(name.into(), ModEntryKind::Mod)?;
+        let mod_dir = self.mod_dir(&mod_decl).expect("not a separator");
+
+        staged_mod.place(&mod_dir)?;
+
+        self.changed = true;
+        let idx = self.data.mods.push_and_get_key(mod_decl);
+        self.mod_order_mut().push(ModOrderEntry::new(idx));
+
+        Ok(())
     }
 
     /// Removes the specified mod.
@@ -305,6 +323,16 @@ pub enum CreateModError {
     InvalidName(#[from] InvalidModNameError),
     #[error("failed to initialize mod directory")]
     Init(#[from] ModInitError),
+}
+
+#[derive(Debug, Error)]
+pub enum AddStagedModError {
+    #[error("there already exists a mod with the specified name")]
+    AlreadyExists,
+    #[error(transparent)]
+    InvalidName(#[from] InvalidModNameError),
+    #[error(transparent)]
+    Place(#[from] PlaceError),
 }
 
 #[derive(Debug, Error)]

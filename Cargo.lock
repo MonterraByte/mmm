@@ -2209,6 +2209,7 @@ dependencies = [
  "nary_tree",
  "sevenz-rust2",
  "tar",
+ "tempfile",
  "thiserror 2.0.18",
  "tracing",
  "typed-index-collections",

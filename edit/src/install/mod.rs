@@ -1,4 +1,4 @@
-// Copyright © 2025-2026 Joaquim Monteiro
+// Copyright © 2026 Joaquim Monteiro
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -13,14 +13,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#![forbid(unsafe_code)]
+//! Mod installation functionality.
 
-pub mod archive;
-pub mod install;
-mod instance;
-mod r#mod;
-pub mod util;
-mod writer;
-
-pub use instance::{EditableInstance, InstanceOpenError};
-pub use r#mod::{Mod, ModInitError};
+pub mod staging;
