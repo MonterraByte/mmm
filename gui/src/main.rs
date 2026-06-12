@@ -143,6 +143,10 @@ impl ModManagerUi {
 }
 
 impl App for ModManagerUi {
+    fn logic(&mut self, _ctx: &Context, _frame: &mut Frame) {
+        self.instance.save();
+    }
+
     fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
         Panel::bottom(Id::new("status")).show_inside(ui, |ui| {
             self.status_bar(ui);
