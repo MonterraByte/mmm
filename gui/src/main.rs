@@ -403,7 +403,7 @@ impl ModManagerUi {
             return;
         }
 
-        let modal = Modal::new(Id::new("new_mod")).show(ui.ctx(), |ui| {
+        let modal = Modal::new(Id::new("new_mod")).show(ui, |ui| {
             ui.set_width(250.0);
             ui.heading(if self.create_new_mod_modal.kind == ModEntryKind::Separator {
                 "Create separator"
