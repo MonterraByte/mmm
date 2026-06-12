@@ -26,14 +26,14 @@ use std::fmt::Write;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Receiver, Sender};
 
 use anyhow::Context as _;
 use clap::Parser;
 use eframe::{App, Frame, NativeOptions, egui, egui_wgpu, wgpu};
 use egui::{
-    Align, CentralPanel, Color32, Id, Layout, Modal, Panel, Popup, ScrollArea, Sense, Sides, Stroke, TextStyle,
-    TextWrapMode, Ui,
+    Align, CentralPanel, Color32, Context, Id, Layout, Modal, Panel, Popup, ScrollArea, Sense, Sides, Stroke,
+    TextStyle, TextWrapMode, Ui,
 };
 use egui_extras::{Column, TableBuilder};
 use egui_wgpu::{WgpuSetup, WgpuSetupCreateNew};
@@ -45,7 +45,7 @@ use wgpu::{PowerPreference, PresentMode};
 use mmm_core::instance::{Instance, ModDeclaration, ModEntryKind, ModIndex, ModOrderIndex};
 use mmm_edit::EditableInstance;
 
-use crate::background_task::{BackgroundTask, StatusString, spawn_background_thread};
+use crate::background_task::{BackgroundTask, Finalizer, StatusString, spawn_background_thread};
 use crate::details::ModDetailsWindow;
 
 const APP_NAME: &str = "zone.monterra.modmanager";
@@ -114,6 +114,7 @@ fn native_options(instance: &EditableInstance) -> NativeOptions {
 pub struct ModManagerUi {
     instance: EditableInstance,
     background_task_queue: Sender<BackgroundTask>,
+    background_task_finalizer_queue: Receiver<Finalizer>,
     background_task_status: StatusString,
     selection: HashSet<ModOrderIndex>,
     last_selected: Option<ModOrderIndex>,
@@ -125,12 +126,13 @@ pub struct ModManagerUi {
 
 impl ModManagerUi {
     fn new(instance: EditableInstance) -> Box<Self> {
-        let (background_task_queue, background_task_status) =
+        let (background_task_queue, background_task_finalizer_queue, background_task_status) =
             spawn_background_thread().expect("failed to spawn background task thread");
 
         Box::new(Self {
             instance,
             background_task_queue,
+            background_task_finalizer_queue,
             background_task_status,
             selection: HashSet::default(),
             last_selected: None,
@@ -144,6 +146,10 @@ impl ModManagerUi {
 
 impl App for ModManagerUi {
     fn logic(&mut self, _ctx: &Context, _frame: &mut Frame) {
+        while let Ok(finalizer) = self.background_task_finalizer_queue.try_recv() {
+            finalizer(self);
+        }
+
         self.instance.save();
     }
 
@@ -543,6 +549,8 @@ impl ModManagerUi {
                                     error!("failed to delete '{}': {}", path.display(), err);
                                 }
                             }
+
+                            None
                         });
                         self.spawn_background_task(task);
                         self.selection.clear();
