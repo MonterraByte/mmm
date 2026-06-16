@@ -17,6 +17,7 @@
 
 mod background_task;
 mod details;
+mod install;
 mod tree;
 mod utils;
 
@@ -47,6 +48,7 @@ use mmm_edit::EditableInstance;
 
 use crate::background_task::{BackgroundTask, Finalizer, StatusString, spawn_background_thread};
 use crate::details::ModDetailsWindow;
+use crate::install::OngoingModInstallation;
 
 const APP_NAME: &str = "zone.monterra.modmanager";
 
@@ -122,6 +124,7 @@ pub struct ModManagerUi {
     create_new_mod_modal: CreateNewModModal,
     rename_mod_modal: RenameModModal,
     remove_selected_mods_modal: RemoveSelectedModsModal,
+    ongoing_mod_installs: Vec<OngoingModInstallation>,
 }
 
 impl ModManagerUi {
@@ -140,6 +143,7 @@ impl ModManagerUi {
             create_new_mod_modal: CreateNewModModal::default(),
             rename_mod_modal: RenameModModal::default(),
             remove_selected_mods_modal: RemoveSelectedModsModal::default(),
+            ongoing_mod_installs: Vec::new(),
         })
     }
 }
@@ -153,23 +157,31 @@ impl App for ModManagerUi {
         self.instance.save();
     }
 
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
+    fn ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
         Panel::bottom(Id::new("status")).show_inside(ui, |ui| {
             self.status_bar(ui);
         });
 
         CentralPanel::default().show_inside(ui, |ui| {
-            self.center_panel(ui);
+            self.center_panel(ui, frame);
         });
 
         self.open_mod_details
             .retain(|idx, window| window.update(ui, &self.instance, *idx).into());
+        self.ongoing_mod_installs
+            .retain_mut(|install| install.update(ui, &self.instance).into());
 
         self.instance.save();
     }
 }
 
 impl ModManagerUi {
+    fn mod_added(&mut self) {
+        self.ongoing_mod_installs
+            .iter_mut()
+            .for_each(OngoingModInstallation::clear_mod_already_exists_state);
+    }
+
     fn mod_removed(&mut self, removed_mod: ModIndex) {
         // Mod details windows are stored with an associated mod index. When a mod is removed,
         // mod indices greater than the removed mod's are shifted to the left, so that needs to be fixed up here.
@@ -182,9 +194,13 @@ impl ModManagerUi {
         for (idx, window) in mod_details_windows_to_reinsert {
             self.open_mod_details.insert(idx.saturating_sub(1u32), window);
         }
+
+        self.ongoing_mod_installs
+            .iter_mut()
+            .for_each(OngoingModInstallation::clear_mod_already_exists_state);
     }
 
-    fn center_panel(&mut self, ui: &mut Ui) {
+    fn center_panel(&mut self, ui: &mut Ui, frame: &mut Frame) {
         ui.horizontal(|ui| {
             let response = ui.button("Add mod");
             Popup::menu(&response).show(|ui| {
@@ -196,6 +212,14 @@ impl ModManagerUi {
                 if ui.button("Create separator").clicked() {
                     self.create_new_mod_modal.kind = ModEntryKind::Separator;
                     self.create_new_mod_modal.open = true;
+                }
+
+                if ui.button("Install from file").clicked() {
+                    self.ongoing_mod_installs
+                        .push(OngoingModInstallation::new_with_file_picker(
+                            frame,
+                            self.background_task_queue.clone(),
+                        ));
                 }
             });
 
@@ -435,6 +459,8 @@ impl ModManagerUi {
                 {
                     error!("failed to create mod '{}': {}", &self.create_new_mod_modal.input, err);
                 }
+
+                self.mod_added();
                 ui.close();
             }
         });
@@ -491,6 +517,11 @@ impl ModManagerUi {
                 if let Err(err) = self.instance.rename_mod(mod_idx, &self.rename_mod_modal.input) {
                     error!("failed to rename mod to '{}': {}", &self.rename_mod_modal.input, err);
                 }
+
+                self.ongoing_mod_installs
+                    .iter_mut()
+                    .for_each(OngoingModInstallation::clear_mod_already_exists_state);
+
                 ui.close();
             }
         });
