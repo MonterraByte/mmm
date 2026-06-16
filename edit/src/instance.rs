@@ -16,6 +16,7 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 use compact_str::{CompactString, format_compact};
@@ -38,7 +39,7 @@ use crate::{Mod, ModInitError};
 
 /// Implementation of [`Instance`] with editing support (for interactive applications).
 pub struct EditableInstance {
-    dir: PathBuf,
+    dir: Arc<Path>,
     data: InstanceData,
     state: EditorState,
     write_queue: Sender<WriteRequest>,
@@ -49,12 +50,14 @@ impl EditableInstance {
     /// Opens the instance at the specified path.
     #[allow(clippy::assigning_clones, reason = "compact_str clones don't share resources")]
     pub fn open(dir: &Path) -> Result<Self, InstanceOpenError> {
-        let dir = dir
-            .canonicalize()
-            .map_err(|source| InstanceOpenError::DirCanonicalize { source, dir: dir.to_owned() })?;
+        let dir: Arc<Path> = Arc::from(
+            dir.canonicalize()
+                .map_err(|source| InstanceOpenError::DirCanonicalize { source, dir: dir.to_owned() })?
+                .into_boxed_path(),
+        );
         if !dir
             .metadata()
-            .map_err(|source| InstanceOpenError::DirMetadata { source, dir: dir.clone() })?
+            .map_err(|source| InstanceOpenError::DirMetadata { source, dir: Arc::clone(&dir) })?
             .is_dir()
         {
             return Err(InstanceOpenError::NotADirectory(dir));
@@ -115,9 +118,9 @@ pub enum InstanceOpenError {
     #[error("failed to canonicalize path '{dir}'")]
     DirCanonicalize { source: io::Error, dir: PathBuf },
     #[error("failed to get metadata of '{dir}'")]
-    DirMetadata { source: io::Error, dir: PathBuf },
+    DirMetadata { source: io::Error, dir: Arc<Path> },
     #[error("'{0}' is not a directory")]
-    NotADirectory(PathBuf),
+    NotADirectory(Arc<Path>),
     #[error("failed to open instance data file")]
     DataOpen(#[from] InstanceDataOpenError),
     #[error("failed to spawn writer thread")]
@@ -144,6 +147,11 @@ impl Instance for EditableInstance {
 }
 
 impl EditableInstance {
+    #[must_use]
+    pub fn arc_dir(&self) -> Arc<Path> {
+        Arc::clone(&self.dir)
+    }
+
     fn mod_order_mut(&mut self) -> &mut TiVec<ModOrderIndex, ModOrderEntry> {
         &mut self
             .data
