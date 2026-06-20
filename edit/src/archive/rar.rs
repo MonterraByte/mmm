@@ -106,4 +106,69 @@ impl ArchiveFormat for Rar {
 
         Ok(())
     }
+
+    fn read_file(&mut self, path_in_archive: &Utf8Path) -> anyhow::Result<Option<Vec<u8>>> {
+        let mut archive = Archive::new(&self.0)
+            .open_for_processing()
+            .context("failed to open RAR archive")?;
+
+        while let Some(header) = archive.read_header().context("failed to read entry header")? {
+            if header.entry().is_file() {
+                let entry_path: &Utf8Path = header
+                    .entry()
+                    .filename
+                    .as_path()
+                    .try_into()
+                    .context("entry path is not valid UTF-8")?;
+
+                if entry_path == path_in_archive {
+                    let (content, _) = header.read().context("failed to read entry from archive")?;
+                    return Ok(Some(content));
+                }
+            }
+
+            archive = header.skip().context("failed to skip entry header")?;
+        }
+
+        Ok(None)
+    }
+
+    fn read_files(&mut self, path_in_archive: Vec<Utf8PathBuf>) -> anyhow::Result<Vec<Option<Vec<u8>>>> {
+        let mut archive = Archive::new(&self.0)
+            .open_for_processing()
+            .context("failed to open RAR archive")?;
+        let mut files = vec![None; path_in_archive.len()];
+
+        'next_header: while let Some(header) = archive.read_header().context("failed to read entry header")? {
+            if header.entry().is_file() {
+                let entry_path: &Utf8Path = header
+                    .entry()
+                    .filename
+                    .as_path()
+                    .try_into()
+                    .context("entry path is not valid UTF-8")?;
+
+                for (file, path) in files
+                    .iter_mut()
+                    .zip(path_in_archive.iter())
+                    .filter(|(v, _)| v.is_none())
+                {
+                    if entry_path == *path {
+                        let (content, a) = header.read().context("failed to read entry from archive")?;
+                        *file = Some(content);
+                        archive = a;
+
+                        if files.iter().all(Option::is_some) {
+                            break 'next_header;
+                        }
+                        continue 'next_header;
+                    }
+                }
+            }
+
+            archive = header.skip().context("failed to skip entry header")?;
+        }
+
+        Ok(files)
+    }
 }

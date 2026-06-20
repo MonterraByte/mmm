@@ -102,4 +102,12 @@ impl ArchiveFormat for SevenZip {
 
         Ok(())
     }
+
+    fn read_file(&mut self, path_in_archive: &Utf8Path) -> anyhow::Result<Option<Vec<u8>>> {
+        match self.0.read_file(path_in_archive.as_str()) {
+            Ok(file) => Ok(Some(file)),
+            Err(sevenz_rust2::Error::FileNotFound) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
 }

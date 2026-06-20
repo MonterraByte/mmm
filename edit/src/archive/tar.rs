@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Context;
+use camino::{Utf8Path, Utf8PathBuf};
 use tar::{Archive, EntryType};
 
 use mmm_core::file_tree::util::NodePathBuilder;
@@ -123,5 +124,70 @@ impl ArchiveFormat for Tar {
         }
 
         Ok(())
+    }
+
+    fn read_file(&mut self, path_in_archive: &Utf8Path) -> anyhow::Result<Option<Vec<u8>>> {
+        self.0.seek(SeekFrom::Start(0)).context("failed to seek to start")?;
+        let mut archive = Archive::new(&mut self.0);
+
+        for entry in archive.entries_with_seek().context("failed to open tar archive")? {
+            let mut entry = entry.context("failed to read entry")?;
+            if !matches!(entry.header().entry_type(), EntryType::Regular | EntryType::Continuous) {
+                continue;
+            }
+
+            if <&Utf8Path>::try_from(entry.path().context("failed to access entry path")?.as_ref())
+                .context("entry path is not valid UTF-8")?
+                == path_in_archive
+            {
+                let size = usize::try_from(entry.size())
+                    .with_context(|| format!("entry is too large ({} bytes)", entry.size()))?;
+
+                let mut contents = Vec::with_capacity(size);
+                entry.read_to_end(&mut contents)?;
+
+                return Ok(Some(contents));
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn read_files(&mut self, path_in_archive: Vec<Utf8PathBuf>) -> anyhow::Result<Vec<Option<Vec<u8>>>> {
+        self.0.seek(SeekFrom::Start(0)).context("failed to seek to start")?;
+        let mut archive = Archive::new(&mut self.0);
+        let mut files = vec![None; path_in_archive.len()];
+
+        'next_entry: for entry in archive.entries_with_seek().context("failed to open tar archive")? {
+            let mut entry = entry.context("failed to read entry")?;
+            if !matches!(entry.header().entry_type(), EntryType::Regular | EntryType::Continuous) {
+                continue;
+            }
+
+            for (file, path) in files
+                .iter_mut()
+                .zip(path_in_archive.iter())
+                .filter(|(v, _)| v.is_none())
+            {
+                if <&Utf8Path>::try_from(entry.path().context("failed to access entry path")?.as_ref())
+                    .context("entry path is not valid UTF-8")?
+                    == *path
+                {
+                    let size = usize::try_from(entry.size())
+                        .with_context(|| format!("entry is too large ({} bytes)", entry.size()))?;
+
+                    let mut contents = Vec::with_capacity(size);
+                    entry.read_to_end(&mut contents)?;
+                    *file = Some(contents);
+
+                    if files.iter().all(Option::is_some) {
+                        break 'next_entry;
+                    }
+                    continue 'next_entry;
+                }
+            }
+        }
+
+        Ok(files)
     }
 }

@@ -25,7 +25,7 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::ToCompactString;
 use foldhash::HashMap;
 use nary_tree::NodeId;
@@ -33,7 +33,7 @@ use thiserror::Error;
 
 use mmm_core::file_tree::{
     Counters, FileTree, FileTreeBuilder, FileTreeBuilderWithCounter, TreeNode, TreeNodeKind, TreeNodeRef,
-    find_node_by_path, new_tree,
+    find_node_by_path, new_tree, node_path,
 };
 
 use self::rar::Rar;
@@ -48,9 +48,24 @@ pub struct Archive {
     tree: FileTree,
 }
 
+pub type FileReadMap = HashMap<NodeId, Vec<u8>>;
+
 trait ArchiveFormat: Send {
     fn file_tree(&mut self, tree_builder: &FileTreeBuilderWithCounter) -> anyhow::Result<FileTree>;
     fn extract(&mut self, dir: PathBuf, file_tree: &FileTree, selection: &ExtractSelection) -> anyhow::Result<()>;
+    fn read_file(&mut self, path_in_archive: &Utf8Path) -> anyhow::Result<Option<Vec<u8>>>;
+    fn read_files(&mut self, path_in_archive: Vec<Utf8PathBuf>) -> anyhow::Result<Vec<Option<Vec<u8>>>> {
+        let mut files = vec![None; path_in_archive.len()];
+        for (file, path) in files
+            .iter_mut()
+            .zip(path_in_archive.iter())
+            .filter(|(v, _)| v.is_none())
+        {
+            *file = self.read_file(path)?;
+        }
+
+        Ok(files)
+    }
 }
 
 trait ArchiveFormatDef {
@@ -116,6 +131,27 @@ impl Archive {
     pub fn extract(&mut self, path: PathBuf, selection: &ExtractSelection) -> Result<(), anyhow::Error> {
         fs::create_dir_all(&path)?;
         self.handle.extract(path, &self.tree, selection)
+    }
+
+    /// Reads the specified files from the archive into memory.
+    ///
+    /// If no errors occur, a map is returned containing the contents of the found files,
+    /// with the corresponding `NodeId` as the key.
+    pub fn read_files(&mut self, files: &[&NodeId]) -> anyhow::Result<FileReadMap> {
+        let paths = files
+            .iter()
+            .copied()
+            .map(|id| node_path(&self.tree.get(*id).expect("node exists")))
+            .collect::<Vec<_>>();
+        let contents = self.handle.read_files(paths)?;
+
+        let mut map = HashMap::default();
+        for (id, content) in files.iter().copied().zip(contents) {
+            if let Some(content) = content {
+                map.insert(*id, content);
+            }
+        }
+        Ok(map)
     }
 
     /// Returns the file tree that represents the contents of the archive.

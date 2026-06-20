@@ -14,14 +14,15 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use std::fs::{self, File};
-use std::io::{self, BufReader, BufWriter};
+use std::io::{self, BufReader, BufWriter, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::Context;
-use camino::Utf8PathBuf;
+use anyhow::{Context, bail};
+use camino::{Utf8Path, Utf8PathBuf};
 use tracing::warn;
 use zip::ZipArchive;
+use zip::result::ZipError;
 
 use mmm_core::file_tree::util::NodePathBuilder;
 use mmm_core::file_tree::{FileTree, FileTreeBuilderWithCounter, new_tree};
@@ -119,5 +120,27 @@ impl ArchiveFormat for Zip {
         }
 
         Ok(())
+    }
+
+    fn read_file(&mut self, path_in_archive: &Utf8Path) -> anyhow::Result<Option<Vec<u8>>> {
+        let mut entry = match self.0.by_name(path_in_archive.as_ref()) {
+            Ok(entry) => entry,
+            Err(ZipError::FileNotFound) => return Ok(None),
+            Err(err) => return Err(err.into()),
+        };
+
+        if !entry.is_file() {
+            bail!("entry is not a file");
+        }
+
+        let size =
+            usize::try_from(entry.size()).with_context(|| format!("file is too large ({} bytes)", entry.size()))?;
+
+        let mut contents = Vec::with_capacity(size);
+        entry
+            .read_to_end(&mut contents)
+            .context("failed to read entry contents")?;
+
+        Ok(Some(contents))
     }
 }
