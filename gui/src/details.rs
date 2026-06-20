@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use std::assert_matches;
 use std::fmt::Write;
 use std::fs;
 use std::io;
@@ -133,7 +134,7 @@ impl ModDetailsWindow {
             Tree::Some(tree) => {
                 let dnd = dnd_handle_actions_fn(|tree, dnd| {
                     let target_node = tree.get(dnd.target).expect("node exists");
-                    assert!(matches!(target_node.data().kind, TreeNodeKind::Dir));
+                    assert_matches!(target_node.data().kind, TreeNodeKind::Dir);
 
                     let mod_dir = instance.mod_dir(&instance.mods()[mod_index]).expect("not a separator");
 
