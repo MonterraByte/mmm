@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use std::borrow::Cow;
 use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Read};
 use std::path::{Path, PathBuf};
@@ -29,7 +30,17 @@ use mmm_core::file_tree::{FileTree, FileTreeBuilderWithCounter, new_tree};
 
 use super::{ArchiveFormat, ArchiveFormatDef, ExtractSelection};
 
-pub struct Zip(ZipArchive<BufReader<File>>);
+pub struct Zip {
+    archive: ZipArchive<BufReader<File>>,
+
+    // Zip files are only allowed to use `/` as the path separator. However, some broken implementations use `\` instead.
+    // `ZipFile::enclosed_path` fixes this automatically, so this isn't normally an issue.
+    // It becomes an issue when using `ZipArchive::by_name`, as we don't store the original paths,
+    // and it can't find files if the path we give it has its separators changed.
+    // Therefore, we need to detect this while listing the files in the archive, so we can correct the paths
+    // before calling `ZipArchive::by_name`.
+    uses_broken_backslash_separators: Option<bool>,
+}
 
 impl ArchiveFormatDef for Zip {
     fn file_is_archive(_: &mut File, first_eight_bytes: [u8; 8]) -> Result<bool, io::Error> {
@@ -46,7 +57,7 @@ impl ArchiveFormatDef for Zip {
     fn open(file: File, _: Arc<Path>) -> Result<Box<dyn ArchiveFormat>, anyhow::Error> {
         let reader = BufReader::new(file);
         let archive = ZipArchive::new(reader).context("failed to open ZIP archive")?;
-        Ok(Box::new(Self(archive)))
+        Ok(Box::new(Self { archive, uses_broken_backslash_separators: None }))
     }
 }
 
@@ -54,13 +65,17 @@ impl ArchiveFormat for Zip {
     fn file_tree(&mut self, tree_builder: &FileTreeBuilderWithCounter) -> Result<FileTree, anyhow::Error> {
         let mut tree = new_tree();
 
-        for idx in 0..self.0.len() {
+        for idx in 0..self.archive.len() {
             let file = self
-                .0
+                .archive
                 .by_index_raw(idx)
                 .with_context(|| format!("failed to read entry {idx}"))?;
             if file.is_dir() {
                 continue;
+            }
+
+            if self.uses_broken_backslash_separators.is_none() && file.name().contains('\\') {
+                self.uses_broken_backslash_separators = Some(true);
             }
 
             if let Some(name) = file.enclosed_name() {
@@ -71,6 +86,10 @@ impl ArchiveFormat for Zip {
             } else {
                 warn!("ignoring invalid path '{}'", file.name());
             }
+        }
+
+        if self.uses_broken_backslash_separators.is_none() {
+            self.uses_broken_backslash_separators = Some(false);
         }
 
         Ok(tree)
@@ -84,9 +103,9 @@ impl ArchiveFormat for Zip {
     ) -> Result<(), anyhow::Error> {
         let mut path_builder = NodePathBuilder::new(dir);
 
-        for idx in 0..self.0.len() {
+        for idx in 0..self.archive.len() {
             let mut entry = self
-                .0
+                .archive
                 .by_index(idx)
                 .with_context(|| format!("failed to read entry {idx}"))?;
             if entry.is_dir() {
@@ -123,7 +142,9 @@ impl ArchiveFormat for Zip {
     }
 
     fn read_file(&mut self, path_in_archive: &Utf8Path) -> anyhow::Result<Option<Vec<u8>>> {
-        let mut entry = match self.0.by_name(path_in_archive.as_ref()) {
+        let path = self.fix_path(path_in_archive);
+
+        let mut entry = match self.archive.by_name(&path) {
             Ok(entry) => entry,
             Err(ZipError::FileNotFound) => return Ok(None),
             Err(err) => return Err(err.into()),
@@ -142,5 +163,15 @@ impl ArchiveFormat for Zip {
             .context("failed to read entry contents")?;
 
         Ok(Some(contents))
+    }
+}
+
+impl Zip {
+    fn fix_path<'p>(&self, path: &'p Utf8Path) -> Cow<'p, str> {
+        if self.uses_broken_backslash_separators == Some(true) {
+            Cow::Owned(path.as_str().replace('/', "\\"))
+        } else {
+            Cow::Borrowed(path.as_str())
+        }
     }
 }
