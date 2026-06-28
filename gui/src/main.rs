@@ -149,10 +149,16 @@ impl ModManagerUi {
 }
 
 impl App for ModManagerUi {
-    fn logic(&mut self, _ctx: &Context, _frame: &mut Frame) {
+    fn logic(&mut self, ctx: &Context, _frame: &mut Frame) {
         while let Ok(finalizer) = self.background_task_finalizer_queue.try_recv() {
             finalizer(self);
         }
+
+        self.open_mod_details
+            .values_mut()
+            .for_each(|details| details.update(ctx));
+        self.ongoing_mod_installs
+            .retain_mut(|install| install.update(ctx).into());
 
         self.instance.save();
     }
@@ -167,9 +173,9 @@ impl App for ModManagerUi {
         });
 
         self.open_mod_details
-            .retain(|idx, window| window.update(ui, &self.instance, *idx).into());
+            .retain(|idx, window| window.ui(ui, &self.instance, *idx).into());
         self.ongoing_mod_installs
-            .retain_mut(|install| install.update(ui, &self.instance).into());
+            .retain_mut(|install| install.ui(ui, &self.instance).into());
 
         self.instance.save();
     }

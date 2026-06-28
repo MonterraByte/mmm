@@ -127,7 +127,7 @@ impl OngoingModInstallation {
         })
     }
 
-    pub fn update(&mut self, ui: &mut Ui, instance: &EditableInstance) -> ViewportResult {
+    pub fn update(&mut self, ctx: &egui::Context) -> ViewportResult {
         match &mut self.state {
             State::FilePicker(picker) => match picker.as_mut().poll(&mut Context::from_waker(&noop_waker())) {
                 Poll::Pending => ViewportResult::Keep,
@@ -147,17 +147,6 @@ impl OngoingModInstallation {
                 Poll::Ready(None) => ViewportResult::Drop,
             },
             State::Opening { handle, counter, previous_count, text, path } => {
-                let viewport = self.viewport.get_or_insert_with(|| {
-                    Viewport::new(
-                        ViewportId::from_hash_of(("install", &path, Instant::now())),
-                        format!(
-                            "mmm — Installing archive {}",
-                            path.file_name().and_then(OsStr::to_str).unwrap_or_default(),
-                        ),
-                        Some(Vec2::new(750.0, 450.0)),
-                    )
-                });
-
                 if handle.as_ref().expect("not joined yet").is_finished() {
                     let handle = handle.take().expect("not joined yet");
                     self.state = match handle.join() {
@@ -184,19 +173,41 @@ impl OngoingModInstallation {
                             State::Error(Box::from("Failed to open archive:\nThread panicked."))
                         }
                     };
-                    return self.update(ui, instance);
+                    ctx.request_repaint();
+                } else {
+                    let count = counter.unique_files();
+                    if count != *previous_count {
+                        *previous_count = count;
+                        text.clear();
+                        write!(text, "{} file entries read", count).expect("writing to a string shouldn't fail");
+                        ctx.request_repaint();
+                    }
                 }
+
+                ViewportResult::Keep
+            }
+            State::ExtractDialog { .. } | State::Error(_) => ViewportResult::Keep,
+            State::Closing => ViewportResult::Drop,
+        }
+    }
+
+    pub fn ui(&mut self, ui: &mut Ui, instance: &EditableInstance) -> ViewportResult {
+        match &mut self.state {
+            State::FilePicker(_) => ViewportResult::Keep,
+            State::Opening { text, path, .. } => {
+                let viewport = self.viewport.get_or_insert_with(|| {
+                    Viewport::new(
+                        ViewportId::from_hash_of(("install", &path, Instant::now())),
+                        format!(
+                            "mmm — Installing archive {}",
+                            path.file_name().and_then(OsStr::to_str).unwrap_or_default(),
+                        ),
+                        Some(Vec2::new(750.0, 450.0)),
+                    )
+                });
 
                 show_immediate!(viewport, ui, |ui, _viewport| {
                     CentralPanel::default().show_inside(ui, |ui| {
-                        let count = counter.unique_files();
-                        if count != *previous_count {
-                            *previous_count = count;
-                            text.clear();
-                            write!(text, "{} file entries read", count).expect("writing to a string shouldn't fail");
-                            ui.request_repaint();
-                        }
-
                         ui.centered_and_justified(|ui| {
                             ui.label(text.as_str());
                         });

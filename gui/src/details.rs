@@ -24,7 +24,7 @@ use std::time::Instant;
 
 use compact_str::CompactString;
 use eframe::egui;
-use egui::{CentralPanel, CornerRadius, Frame, Ui, ViewportCommand, ViewportId};
+use egui::{CentralPanel, Context, CornerRadius, Frame, Ui, ViewportCommand, ViewportId};
 use nary_tree::NodeId;
 use tracing::error;
 
@@ -70,25 +70,6 @@ impl Tree {
             message: CompactString::const_new("0 files counted"),
         })
     }
-
-    fn update(&mut self) {
-        if let Tree::Pending { handle, .. } = self
-            && handle.as_ref().expect("not joined yet").is_finished()
-        {
-            let handle = handle.take().expect("not joined yet");
-            match handle.join() {
-                Ok(Ok(tree)) => *self = Tree::Some(tree),
-                Ok(Err(err)) => {
-                    error!(?err, "failed to build file tree");
-                    *self = Tree::Error(format!("Failed to build file tree:\n{}", err).into_boxed_str());
-                }
-                Err(_) => {
-                    error!("file tree thread panicked");
-                    *self = Tree::Error(Box::from("Failed to build file tree:\nThread panicked."));
-                }
-            }
-        }
-    }
 }
 
 pub struct ModDetailsWindow {
@@ -117,9 +98,27 @@ impl ModDetailsWindow {
         self.raise = true;
     }
 
-    pub fn update(&mut self, ui: &mut Ui, instance: &EditableInstance, mod_index: ModIndex) -> ViewportResult {
-        self.tree.update();
+    pub fn update(&mut self, ctx: &Context) {
+        if let Tree::Pending { handle, .. } = &mut self.tree {
+            if handle.as_ref().expect("not joined yet").is_finished() {
+                let handle = handle.take().expect("not joined yet");
+                match handle.join() {
+                    Ok(Ok(tree)) => self.tree = Tree::Some(tree),
+                    Ok(Err(err)) => {
+                        error!(?err, "failed to build file tree");
+                        self.tree = Tree::Error(format!("Failed to build file tree:\n{}", err).into_boxed_str());
+                    }
+                    Err(_) => {
+                        error!("file tree thread panicked");
+                        self.tree = Tree::Error(Box::from("Failed to build file tree:\nThread panicked."));
+                    }
+                }
+                ctx.request_repaint();
+            }
+        }
+    }
 
+    pub fn ui(&mut self, ui: &mut Ui, instance: &EditableInstance, mod_index: ModIndex) -> ViewportResult {
         show_immediate!(self.viewport, ui, |ui: &mut Ui, _viewport| {
             if self.raise {
                 self.raise = false;
