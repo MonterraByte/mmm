@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::task::{Context, Poll};
 use std::thread::{self, JoinHandle};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use compact_str::CompactString;
@@ -130,7 +130,10 @@ impl OngoingModInstallation {
     pub fn update(&mut self, ctx: &egui::Context) -> ViewportResult {
         match &mut self.state {
             State::FilePicker(picker) => match picker.as_mut().poll(&mut Context::from_waker(&noop_waker())) {
-                Poll::Pending => ViewportResult::Keep,
+                Poll::Pending => {
+                    ctx.request_repaint_after(Duration::from_secs(1));
+                    ViewportResult::Keep
+                }
                 Poll::Ready(Some(file)) => {
                     let path: Arc<Path> = PathBuf::from(file).into();
                     match Self::new_opening_state(path) {
@@ -147,6 +150,8 @@ impl OngoingModInstallation {
                 Poll::Ready(None) => ViewportResult::Drop,
             },
             State::Opening { handle, counter, previous_count, text, path } => {
+                ctx.request_repaint_after(Duration::from_millis(100));
+
                 if handle.as_ref().expect("not joined yet").is_finished() {
                     let handle = handle.take().expect("not joined yet");
                     self.state = match handle.join() {

@@ -20,7 +20,7 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use compact_str::CompactString;
 use eframe::egui;
@@ -100,6 +100,8 @@ impl ModDetailsWindow {
 
     pub fn update(&mut self, ctx: &Context) {
         if let Tree::Pending { handle, .. } = &mut self.tree {
+            ctx.request_repaint_after(Duration::from_millis(100));
+
             if handle.as_ref().expect("not joined yet").is_finished() {
                 let handle = handle.take().expect("not joined yet");
                 match handle.join() {
