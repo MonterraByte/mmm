@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Context;
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use sevenz_rust2::{ArchiveReader, Password};
 
 use mmm_core::file_tree::util::NodePathBuilder;
@@ -109,5 +109,47 @@ impl ArchiveFormat for SevenZip {
             Err(sevenz_rust2::Error::FileNotFound) => Ok(None),
             Err(err) => Err(err.into()),
         }
+    }
+
+    fn read_files(&mut self, path_in_archive: Vec<Utf8PathBuf>) -> anyhow::Result<Vec<Option<Vec<u8>>>> {
+        let mut files = vec![None; path_in_archive.len()];
+
+        let is_solid = self.0.archive().is_solid;
+        self.0.for_each_entries(|entry, reader| {
+            if entry.is_directory {
+                return Ok(true); // continue iterating
+            }
+
+            let entry_path = Utf8Path::new(&entry.name);
+            for (file, path) in files
+                .iter_mut()
+                .zip(path_in_archive.iter())
+                .filter(|(v, _)| v.is_none())
+            {
+                if entry_path == *path {
+                    let size = usize::try_from(entry.size()).map_err(|_| {
+                        sevenz_rust2::Error::Other(format!("entry is too large ({} bytes)", entry.size()).into())
+                    })?;
+
+                    let mut contents = Vec::with_capacity(size);
+                    reader.read_to_end(&mut contents)?;
+                    *file = Some(contents);
+
+                    if files.iter().all(Option::is_some) {
+                        return Ok(false); // all done
+                    }
+                    break;
+                }
+            }
+
+            if is_solid {
+                // See above.
+                io::copy(reader, &mut io::sink())?;
+            }
+
+            Ok(true) // continue iterating
+        })?;
+
+        Ok(files)
     }
 }
