@@ -10,7 +10,7 @@ camino = { workspace = true }
 cbor4ii = { workspace = true }
 compact_str = { workspace = true }
 foldhash = { workspace = true }
-git2 = "0.20"
+git2 = "0.21"
 icu_collator = "2.2"
 mmm-core = { path = "../core" }
 nary_tree = { workspace = true }

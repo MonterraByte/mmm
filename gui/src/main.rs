@@ -34,7 +34,7 @@ use clap::Parser;
 use eframe::{App, Frame, NativeOptions, egui, egui_wgpu, wgpu};
 use egui::{
     Align, CentralPanel, Color32, Context, Id, Layout, Modal, Panel, Popup, ScrollArea, Sense, Sides, Stroke,
-    TextStyle, TextWrapMode, Ui,
+    TextStyle, TextWrapMode, Ui, scroll_area::DragScroll,
 };
 use egui_extras::{Column, TableBuilder};
 use egui_wgpu::{WgpuSetup, WgpuSetupCreateNew};
@@ -82,7 +82,7 @@ fn native_options(instance: &EditableInstance) -> NativeOptions {
 
     // egui defaults to `AutoVsync` (https://github.com/emilk/egui/blob/0.34.3/crates/egui-wgpu/src/lib.rs#L335)
     // which selects `FifoRelaxed` if available, which we don't need.
-    options.wgpu_options.present_mode = PresentMode::Fifo;
+    options.wgpu_options.surface.present_mode = PresentMode::Fifo;
 
     let mut wgpu_setup = WgpuSetupCreateNew::without_display_handle();
     wgpu_setup.power_preference = PowerPreference::from_env().unwrap_or(PowerPreference::LowPower);
@@ -164,11 +164,11 @@ impl App for ModManagerUi {
     }
 
     fn ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
-        Panel::bottom(Id::new("status")).show_inside(ui, |ui| {
+        Panel::bottom(Id::new("status")).show(ui, |ui| {
             self.status_bar(ui);
         });
 
-        CentralPanel::default().show_inside(ui, |ui| {
+        CentralPanel::default().show(ui, |ui| {
             self.center_panel(ui, frame);
         });
 
@@ -270,7 +270,7 @@ impl ModManagerUi {
             .column(Column::auto())
             .min_scrolled_height(0.0)
             .max_scroll_height(available_height)
-            .drag_to_scroll(false)
+            .drag_to_scroll(DragScroll::Never)
             .sense(Sense::click_and_drag());
 
         #[derive(Copy, Clone)]

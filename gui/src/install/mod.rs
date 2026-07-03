@@ -212,7 +212,7 @@ impl OngoingModInstallation {
                 });
 
                 show_immediate!(viewport, ui, |ui, _viewport| {
-                    CentralPanel::default().show_inside(ui, |ui| {
+                    CentralPanel::default().show(ui, |ui| {
                         ui.centered_and_justified(|ui| {
                             ui.label(text.as_str());
                         });
@@ -222,14 +222,14 @@ impl OngoingModInstallation {
             State::ExtractDialog { .. } => {
                 let viewport = self.viewport.as_ref().expect("viewport has been created").as_ref();
                 show_immediate!(viewport, ui, |ui, _viewport| {
-                    CentralPanel::default().show_inside(ui, |ui| self.extract_dialog(ui, instance));
+                    CentralPanel::default().show(ui, |ui| self.extract_dialog(ui, instance));
                 })
             }
             State::Closing => ViewportResult::Drop,
             State::Error(err) => {
                 let viewport = self.viewport.as_ref().expect("viewport has been created").as_ref();
                 show_immediate!(viewport, ui, |ui, _viewport| {
-                    CentralPanel::default().show_inside(ui, |ui| {
+                    CentralPanel::default().show(ui, |ui| {
                         ui.centered_and_justified(|ui| {
                             ui.label(err.as_ref());
                         });

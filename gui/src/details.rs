@@ -126,7 +126,7 @@ impl ModDetailsWindow {
                 self.raise = false;
                 ui.send_viewport_cmd(ViewportCommand::Focus);
             }
-            CentralPanel::default().show_inside(ui, |ui| self.files(ui, instance, mod_index));
+            CentralPanel::default().show(ui, |ui| self.files(ui, instance, mod_index));
         })
     }
 

@@ -9,7 +9,7 @@ camino = { workspace = true }
 cbor4ii = { workspace = true }
 compact_str = { workspace = true }
 const_format = { version = "0.2" }
-itertools = "0.14"
+itertools = "0.15"
 ptree = { workspace = true }
 nary_tree = { workspace = true }
 recycle_vec = "1.1"
