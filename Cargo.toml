@@ -13,9 +13,12 @@ camino = "1.2"
 cbor4ii = { version = "1.2", features = ["serde1", "use_std"] }
 clap = { version = "4.6", features = ["derive"] }
 compact_str = { version = "0.9", features = ["serde"] }
+flexstr = "0.11"
 foldhash = "0.2"
+inline_flexstr = "0.1"
 nary_tree = { git = "https://github.com/MonterraByte/nary-tree", rev = "1b788996e7759be811194fa43db7614d87771224", features = ["iter_mut"] }
 ptree = { version = "0.5", default-features = false, features = ["ansi"] }
+smallvec = { version = "1.15", features = ["union"] }
 tempfile = "3.27"
 thiserror = "2"
 tracing = "0.1"

@@ -15,7 +15,7 @@ nary_tree = { workspace = true }
 recycle_vec = "1.1"
 replace_with = "0.1"
 serde = { version = "1", features = ["derive"] }
-smallvec = { version = "1.15", features = ["union"] }
+smallvec = { workspace = true }
 thiserror = { workspace = true }
 typed-index-collections = { workspace = true }
 

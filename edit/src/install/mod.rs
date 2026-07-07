@@ -15,4 +15,5 @@
 
 //! Mod installation functionality.
 
+pub mod fomod;
 pub mod staging;

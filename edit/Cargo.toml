@@ -9,15 +9,19 @@ anyhow = { workspace = true }
 camino = { workspace = true }
 cbor4ii = { workspace = true }
 compact_str = { workspace = true }
+flexstr = { workspace = true }
 foldhash = { workspace = true }
 git2 = "0.21"
 icu_collator = "2.2"
+inline_flexstr = { workspace = true }
 mmm-core = { path = "../core" }
 nary_tree = { workspace = true }
+roxmltree = { version = "0.21", features = ["positions"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 typed-index-collections = { workspace = true }
 sevenz-rust2 = { version = "0.21", default-features = false, features = ["bzip2", "deflate"] }
+smallvec = { workspace = true }
 tar = { version = "0.4", default-features = false }
 tempfile = { workspace = true }
 unicode-segmentation = "1.13"

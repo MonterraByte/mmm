@@ -1335,6 +1335,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "flexstr"
+version = "0.11.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f081fc7122d1952bc5a0a2cfc7f261499853a28471c406a60b4ca579fa54bc6e"
+dependencies = [
+ "flexstr_support",
+ "inline_flexstr",
+ "prost",
+ "serde",
+]
+
+[[package]]
+name = "flexstr_support"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6588f386366ffb2b146a8aaa5327596f5da43d2085b5e618b8d9032b6d0ab3f9"
+
+[[package]]
 name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1927,6 +1945,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "inline_flexstr"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e57f2dafafe6ebec2bfc46ae1ee6cbc2334ddb0566e8596fd96801acfa6dfc4"
+dependencies = [
+ "flexstr_support",
+ "prost",
+ "serde",
+]
+
+[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2339,12 +2368,16 @@ dependencies = [
  "camino",
  "cbor4ii",
  "compact_str",
+ "flexstr",
  "foldhash 0.2.0",
  "git2",
  "icu_collator",
+ "inline_flexstr",
  "mmm-core",
  "nary_tree",
+ "roxmltree",
  "sevenz-rust2",
+ "smallvec",
  "tar",
  "tempfile",
  "thiserror 2.0.18",
@@ -3141,6 +3174,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5"
 
 [[package]]
+name = "prost"
+version = "0.14.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
+dependencies = [
+ "bytes",
+]
+
+[[package]]
 name = "ptree"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3342,6 +3384,15 @@ dependencies = [
  "wayland-protocols",
  "web-sys",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "roxmltree"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
