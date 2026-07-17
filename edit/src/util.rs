@@ -26,9 +26,10 @@ use std::sync::LazyLock;
 use icu_collator::options::{AlternateHandling, CaseLevel, CollatorOptions, Strength};
 use icu_collator::preferences::{CollationCaseFirst, CollationNumericOrdering};
 use icu_collator::{Collator, CollatorBorrowed, CollatorPreferences};
+use nary_tree::NodeId;
 use thiserror::Error;
 
-use mmm_core::file_tree::{TreeNode, TreeNodeKind};
+use mmm_core::file_tree::{FileTree, TreeNode, TreeNodeKind, TreeNodeRef};
 
 static COLLATOR: LazyLock<CollatorBorrowed<'static>> = LazyLock::new(|| {
     let mut prefs = CollatorPreferences::default();
@@ -45,12 +46,75 @@ static COLLATOR: LazyLock<CollatorBorrowed<'static>> = LazyLock::new(|| {
 
 /// A comparator for [`TreeNode`]s that sorts directories before files
 /// and sorts names using the CLDR Collation Algorithm provided by ICU4X.
+#[must_use]
 pub fn node_ord<F>(left: &TreeNode<F>, right: &TreeNode<F>) -> Ordering {
     match (&left.kind, &right.kind) {
         (TreeNodeKind::Dir, TreeNodeKind::File(_)) => Ordering::Less,
         (TreeNodeKind::File(_), TreeNodeKind::Dir) => Ordering::Greater,
         _ => COLLATOR.compare(&left.name, &right.name),
     }
+}
+
+static CASE_INSENSITIVE_COLLATOR: LazyLock<CollatorBorrowed<'static>> = LazyLock::new(|| {
+    let mut prefs = CollatorPreferences::default();
+    prefs.case_first = Some(CollationCaseFirst::False);
+
+    let mut options = CollatorOptions::default();
+    options.strength = Some(Strength::Secondary);
+    options.alternate_handling = Some(AlternateHandling::NonIgnorable);
+    options.case_level = Some(CaseLevel::Off);
+
+    Collator::try_new(prefs, options).unwrap()
+});
+
+/// Checks if two strings are equal, ignoring case differences.
+#[must_use]
+pub fn case_insensitive_equals(left: &str, right: &str) -> bool {
+    CASE_INSENSITIVE_COLLATOR.compare(left, right) == Ordering::Equal
+}
+
+/// Finds the node with the given (case-insensitive) name that's a child of the given node or any of its outer
+/// directories, and returns both the node and its parent, if present.
+///
+/// By outer directories, we mean directories that contain a single child directory. So, looking for `fomod`
+/// in an archive where the FOMOD directory is under `My Cool Mod 1.0/Mod Files/FOMOD` would return a match
+/// iff `My Cool Mod 1.0` only contains the `Mod Files` directory and nothing else.
+#[must_use]
+pub fn find_entry_in_nested_outer_directories<F>(
+    tree: &FileTree<F>,
+    mut root: NodeId,
+    name: &str,
+) -> Option<(NodeId, NodeId)> {
+    loop {
+        let root_node = tree.get(root).expect("node exists");
+        if let Some(target) = root_node
+            .children()
+            .find(|child| case_insensitive_equals(child.data().name.as_str(), name))
+        {
+            return Some((target.node_id(), root));
+        }
+
+        if let Some(first_child) = root_node.first_child()
+            && let Some(last_child) = root_node.last_child_id()
+            && first_child.node_id() == last_child
+            && matches!(first_child.data().kind, TreeNodeKind::Dir)
+        {
+            root = first_child.node_id();
+        } else {
+            return None;
+        }
+    }
+}
+
+/// Finds the node with the specified case-insensitive name from the children of the specified node.
+#[must_use]
+pub fn find_child_with_case_insensitive_name<'a, F>(
+    parent: &'a TreeNodeRef<F>,
+    name: &str,
+) -> Option<TreeNodeRef<'a, F>> {
+    parent
+        .children()
+        .find(|child| case_insensitive_equals(child.data().name.as_str(), name))
 }
 
 /// Converts UTF-8 or UTF-16 bytes into a `String`.

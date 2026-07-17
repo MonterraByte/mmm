@@ -15,14 +15,65 @@
 
 //! [FOMOD](https://fomod-docs.readthedocs.io/en/latest/index.html) installer support
 
+#![expect(unused)]
+
 pub mod info;
 pub mod module_config;
 
 use std::fmt::{self, Debug, Display};
 
+use nary_tree::NodeId;
 use roxmltree::{Node, TextPos};
 
-use crate::util::SharedStr;
+use mmm_core::file_tree::util::OptionExt as _;
+
+use self::info::{IError, Info, InfoFromBytesError};
+use self::module_config::{McError, ModuleConfig, ModuleConfigFromBytesError};
+use crate::archive::{Archive, FileReadMap};
+use crate::util::{SharedStr, find_child_with_case_insensitive_name, find_entry_in_nested_outer_directories};
+
+/// The location of FOMOD files within an archive.
+#[derive(Debug)]
+pub(super) struct FomodFiles {
+    /// The root directory of the installer (the parent of the `fomod` directory).
+    root: NodeId,
+    /// The node of the `info.xml` file.
+    info: Option<NodeId>,
+    /// The node of the `ModuleConfig.xml` file.
+    module_config: Option<NodeId>,
+}
+
+impl FomodFiles {
+    /// How many files to read from the archive.
+    pub const FILE_COUNT: usize = 2;
+
+    /// Finds the FOMOD files in the specified archive, if any.
+    #[must_use]
+    pub fn probe(archive: &Archive) -> Option<Self> {
+        let (fomod_id, root) = find_entry_in_nested_outer_directories(
+            archive.tree(),
+            archive.tree().root_id().expect("has root node"),
+            "fomod",
+        )?;
+
+        let fomod_dir = archive.tree().get(fomod_id).expect("node exists");
+        let info = find_child_with_case_insensitive_name(&fomod_dir, "info.xml").node_id();
+        let module_config = find_child_with_case_insensitive_name(&fomod_dir, "ModuleConfig.xml").node_id();
+
+        Some(Self { root, info, module_config })
+    }
+
+    /// The `NodeId`s of the files that should be read from the archive.
+    pub fn ids(&self) -> impl Iterator<Item = &NodeId> {
+        self.info.iter().chain(self.module_config.iter())
+    }
+
+    /// Takes the metadata file from the set of files read from the archive and parses it.
+    pub fn get_metadata(&self, map: &mut FileReadMap) -> Option<Result<(Info, Vec<IError>), InfoFromBytesError>> {
+        let data = map.remove(&self.info?)?;
+        Some(Info::from_bytes(data))
+    }
+}
 
 #[derive(Debug)]
 pub struct XmlError<K: Debug + Display> {
