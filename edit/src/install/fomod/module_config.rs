@@ -15,8 +15,6 @@
 
 //! `ModuleConfig.xml` parser
 
-#![expect(unused)]
-
 use std::cmp::Ordering;
 use std::debug_assert_matches;
 
@@ -32,6 +30,7 @@ type Result<T, E = McError> = std::result::Result<T, E>;
 type WarningVec = Vec<McError>;
 
 /// FOMOD installer data.
+#[expect(unused)]
 #[derive(Debug, Default)]
 pub(super) struct ModuleConfig {
     /// The name of the mod.
@@ -318,6 +317,7 @@ impl Dependency {
 }
 
 /// Dependency on a file in the game directory.
+#[expect(unused)]
 #[derive(Debug, Default)]
 pub(super) struct FileDependency {
     /// Path to the file from the game root.
@@ -410,6 +410,7 @@ impl Flag {
 }
 
 /// String describing a game's version number.
+#[expect(unused)]
 #[derive(Debug)]
 pub(super) struct GameVersion(pub SharedStr);
 

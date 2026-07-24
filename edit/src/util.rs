@@ -23,6 +23,7 @@ use std::string::FromUtf16Error;
 use std::sync::Arc;
 use std::sync::LazyLock;
 
+use camino::{Utf8Component, Utf8Path};
 use icu_collator::options::{AlternateHandling, CaseLevel, CollatorOptions, Strength};
 use icu_collator::preferences::{CollationCaseFirst, CollationNumericOrdering};
 use icu_collator::{Collator, CollatorBorrowed, CollatorPreferences};
@@ -115,6 +116,38 @@ pub fn find_child_with_case_insensitive_name<'a, F>(
     parent
         .children()
         .find(|child| case_insensitive_equals(child.data().name.as_str(), name))
+}
+
+/// Finds a node in the tree by its path relative to the root.
+#[must_use]
+pub fn find_node_by_case_insensitive_path<'tree, F>(
+    tree: &'tree FileTree<F>,
+    base: NodeId,
+    path: &Utf8Path,
+) -> Option<TreeNodeRef<'tree, F>> {
+    let mut node = tree.get(base).expect("node exists");
+
+    for component in path.components() {
+        match component {
+            Utf8Component::Normal(name) => {
+                node = node
+                    .children()
+                    .find(|child| case_insensitive_equals(child.data().name.as_str(), name))?;
+            }
+            Utf8Component::ParentDir => {
+                let parent = node.parent()?.node_id();
+                node = tree.get(parent).expect("node exists");
+            }
+            Utf8Component::CurDir => {
+                if matches!(node.data().kind, TreeNodeKind::File(_)) {
+                    return None;
+                }
+            }
+            Utf8Component::Prefix(_) | Utf8Component::RootDir => return None,
+        }
+    }
+
+    Some(node)
 }
 
 /// Converts UTF-8 or UTF-16 bytes into a `String`.
