@@ -304,7 +304,7 @@ where
 }
 
 #[allow(clippy::must_use_candidate)]
-fn create_dir_node<F>(mut parent: TreeNodeMut<F>, name: &str) -> NodeId {
+pub fn create_dir_node<F>(mut parent: TreeNodeMut<F>, name: &str) -> NodeId {
     parent
         .append(TreeNode { name: name.into(), kind: TreeNodeKind::Dir })
         .node_id()

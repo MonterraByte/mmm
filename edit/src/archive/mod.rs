@@ -20,27 +20,29 @@ mod seven_zip;
 mod tar;
 mod zip;
 
+use std::assert_matches;
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
 use compact_str::ToCompactString;
 use foldhash::HashMap;
 use nary_tree::NodeId;
 use thiserror::Error;
 
+use mmm_core::file_tree::util::OptionExt;
 use mmm_core::file_tree::{
     Counters, FileTree, FileTreeBuilder, FileTreeBuilderWithCounter, TreeNode, TreeNodeKind, TreeNodeRef,
-    find_node_by_path, new_tree, node_path,
+    create_dir_node, find_node_by_path, new_tree, node_path,
 };
 
 use self::rar::Rar;
 use self::seven_zip::SevenZip;
 use self::tar::Tar;
 use self::zip::Zip;
-use crate::util::node_ord;
+use crate::util::{find_child_with_case_insensitive_name, node_ord};
 
 /// An open archive file.
 pub struct Archive {
@@ -201,9 +203,15 @@ pub struct ExtractSelection {
 }
 
 impl ExtractSelection {
-    /// Creates a new `ExtractSelection` for the given archive.
+    /// Creates a blank `ExtractSelection`.
     #[must_use]
-    pub fn new(archive: &Archive) -> Self {
+    pub fn new() -> Self {
+        Self { file_map: HashMap::default(), tree: new_tree() }
+    }
+
+    /// Creates a new `ExtractSelection` for the given archive that selects all of its files.
+    #[must_use]
+    pub fn entire_archive(archive: &Archive) -> Self {
         let mut tree = new_tree();
         let mut file_map = HashMap::default();
 
@@ -250,6 +258,154 @@ impl ExtractSelection {
         Self { file_map, tree }
     }
 
+    /// Adds the specified node from the archive into the selection at the specified path.
+    ///
+    /// If the selection already contains a file at the specified path, it is replaced with
+    /// the one being added.
+    ///
+    /// If the specified node is a directory, its contents will be placed at the specified path instead.
+    pub fn add_to_selection(
+        &mut self,
+        archive: &Archive,
+        source_node: &NodeId,
+        target: &Utf8Path,
+    ) -> Result<(), AddToSelectionError> {
+        let source = archive.tree().get(*source_node).expect("node exists");
+        let kind = source.data().kind;
+
+        let trailing_slash = target.as_str().ends_with('/');
+        let mut components = target.components();
+
+        let file_name = if matches!(kind, TreeNodeKind::File(())) {
+            if !trailing_slash {
+                match components.next_back() {
+                    Some(Utf8Component::Normal(name)) => Some(name),
+                    None => Some(source.data().name.as_str()),
+                    Some(other) => panic!("unsupported component: {other:?}"),
+                }
+            } else {
+                Some(source.data().name.as_str())
+            }
+        } else {
+            None
+        };
+
+        let mut target_node = self.tree.root_id().expect("has root node");
+        for component in components {
+            match component {
+                Utf8Component::Normal(name) => {
+                    target_node = if let Some(next_node_id) =
+                        find_child_with_case_insensitive_name(&self.tree.get(target_node).expect("node exists"), name)
+                            .node_id()
+                    {
+                        let next_node = self.tree.get(next_node_id).expect("node exists");
+                        if !matches!(next_node.data().kind, TreeNodeKind::Dir) {
+                            // replace the file with a directory
+                            let mut next_node = self.tree.get_mut(next_node_id).expect("node exists");
+                            next_node.data().kind = TreeNodeKind::Dir;
+                            self.file_map.extract_if(|_, v| *v == next_node_id).for_each(|_| ());
+
+                            // replace the name, in case it has a different case
+                            next_node.data().name.clear();
+                            next_node.data().name.push_str(name);
+                        }
+
+                        next_node_id
+                    } else {
+                        let parent = self.tree.get_mut(target_node).expect("node exists");
+                        create_dir_node(parent, name)
+                    };
+                }
+                Utf8Component::CurDir => {}
+                other => {
+                    return Err(AddToSelectionError::InvalidPathComponent(
+                        other.to_string().into_boxed_str(),
+                    ));
+                }
+            }
+        }
+
+        assert_matches!(
+            self.tree.get(target_node).expect("node exists").data().kind,
+            TreeNodeKind::Dir
+        );
+
+        match kind {
+            TreeNodeKind::File(()) => {
+                let file_name = file_name.expect("file_name is Some when kind is File");
+                let parent = self.tree.get(target_node).expect("node exists");
+
+                let id = if let Some(node) = find_child_with_case_insensitive_name(&parent, file_name) {
+                    let id = node.node_id();
+                    if node.data().name != file_name {
+                        // use name case of the overwriting file
+                        let mut node = self.tree.get_mut(id).expect("node exists");
+                        node.data().name.clear();
+                        node.data().name.push_str(file_name);
+                    }
+                    id
+                } else {
+                    let mut parent = self.tree.get_mut(target_node).expect("node exists");
+                    parent
+                        .append(TreeNode {
+                            name: file_name.into(),
+                            kind: TreeNodeKind::File(true),
+                        })
+                        .node_id()
+                };
+
+                self.file_map.extract_if(|_, v| *v == id).for_each(|_| ());
+                self.file_map.insert(*source_node, id);
+            }
+            TreeNodeKind::Dir => {
+                let mut parent_stack = vec![(*source_node, target_node)];
+                for archive_node in archive
+                    .tree()
+                    .get(*source_node)
+                    .expect("has root node")
+                    .traverse_pre_order()
+                    .skip(1)
+                {
+                    let archive_parent_id = archive_node.parent().expect("has parent").node_id();
+                    while archive_parent_id
+                        != *parent_stack
+                            .last()
+                            .map(|(id, _)| id)
+                            .expect("parent stack always has at least one element")
+                    {
+                        parent_stack.pop();
+                    }
+
+                    let parent_id = parent_stack
+                        .last()
+                        .map(|(_, id)| id)
+                        .expect("parent stack always has at least one element");
+                    let mut parent = self.tree.get_mut(*parent_id).expect("node exists");
+
+                    let name = &archive_node.data().name;
+                    let id = find_child_with_case_insensitive_name(&parent.as_ref(), name).node_id();
+                    match archive_node.data().kind {
+                        TreeNodeKind::Dir => {
+                            let id = id.unwrap_or_else(|| create_dir_node(parent, name));
+                            parent_stack.push((archive_node.node_id(), id));
+                        }
+                        TreeNodeKind::File(()) => {
+                            let id = id.unwrap_or_else(|| {
+                                parent
+                                    .append(TreeNode { name: name.clone(), kind: TreeNodeKind::File(true) })
+                                    .node_id()
+                            });
+                            self.file_map.extract_if(|_, v| *v == id).for_each(|_| ());
+                            self.file_map.insert(archive_node.node_id(), id);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Returns a mutable reference to the file tree that represents the end result of calling [`Archive::extract`].
     ///
     /// Nodes can be moved around and renamed to alter what gets extracted where.
@@ -272,4 +428,17 @@ impl ExtractSelection {
             .and_then(|target_node| self.tree.get(*target_node))
             .take_if(|target_node| matches!(target_node.data().kind, TreeNodeKind::File(true)))
     }
+}
+
+impl Default for ExtractSelection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Error type returned by [`add_to_selection`](ExtractSelection::add_to_selection).
+#[derive(Debug, Error)]
+pub enum AddToSelectionError {
+    #[error("specified path contains invalid component {0}")]
+    InvalidPathComponent(Box<str>),
 }

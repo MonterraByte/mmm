@@ -158,7 +158,7 @@ impl OngoingModInstallation {
                         Ok(Ok(archive)) => {
                             let mod_name = path.file_stem().and_then(OsStr::to_str).unwrap_or_default().to_owned();
 
-                            let extract_selection = ExtractSelection::new(&archive);
+                            let extract_selection = ExtractSelection::entire_archive(&archive);
 
                             State::ExtractDialog {
                                 mod_name,
