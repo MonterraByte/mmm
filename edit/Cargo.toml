@@ -6,6 +6,7 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 anyhow = { workspace = true }
+arrayvec = { workspace = true }
 camino = { workspace = true }
 cbor4ii = { workspace = true }
 compact_str = { workspace = true }

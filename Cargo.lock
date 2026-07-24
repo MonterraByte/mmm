@@ -2365,6 +2365,7 @@ name = "mmm-edit"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "arrayvec",
  "camino",
  "cbor4ii",
  "compact_str",

@@ -15,8 +15,6 @@
 
 //! [FOMOD](https://fomod-docs.readthedocs.io/en/latest/index.html) installer support
 
-#![expect(unused)]
-
 pub mod info;
 pub mod module_config;
 
