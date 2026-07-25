@@ -138,6 +138,7 @@ impl OngoingModInstallation {
                     match Self::new_opening_state(path) {
                         Ok(new_state) => {
                             self.state = new_state;
+                            ctx.request_repaint();
                             ViewportResult::Keep
                         }
                         Err(err) => {
