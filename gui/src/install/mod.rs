@@ -92,6 +92,8 @@ enum State {
         mod_name: String,
         mod_already_exists: Option<bool>,
         archive: Archive,
+        installable_archive: Box<InstallableArchive>,
+        can_go_back_to_installer: bool,
         extract_selection: ExtractSelection,
         tree_display: TreeDisplay,
         dir_checkbox_cache: HashMap<NodeId, CheckboxState>,
@@ -186,6 +188,8 @@ impl OngoingModInstallation {
                                     mod_name,
                                     mod_already_exists: None,
                                     archive,
+                                    installable_archive,
+                                    can_go_back_to_installer: false,
                                     extract_selection,
                                     tree_display: TreeDisplay::new(),
                                     dir_checkbox_cache: HashMap::default(),
@@ -295,16 +299,25 @@ impl OngoingModInstallation {
             unreachable!()
         };
         if let Some(extract_selection) = installer_dialog.show(ui, archive, fomod, instance) {
-            let State::InstallerDialog { mod_name, mod_already_exists, archive, .. } =
-                mem::replace(&mut self.state, State::Closing)
+            let State::InstallerDialog {
+                mod_name,
+                mod_already_exists,
+                archive,
+                installable_archive,
+                ..
+            } = mem::replace(&mut self.state, State::Closing)
             else {
                 unreachable!()
             };
+
+            let can_go_back_to_installer = installable_archive.installer.can_go_back(instance);
 
             self.state = State::ExtractDialog {
                 mod_name,
                 mod_already_exists,
                 archive,
+                installable_archive,
+                can_go_back_to_installer,
                 extract_selection,
                 tree_display: TreeDisplay::new(),
                 dir_checkbox_cache: HashMap::default(),
@@ -357,6 +370,7 @@ impl OngoingModInstallation {
         let State::ExtractDialog {
             mod_name,
             mod_already_exists,
+            can_go_back_to_installer,
             extract_selection,
             tree_display,
             dir_checkbox_cache,
@@ -365,6 +379,7 @@ impl OngoingModInstallation {
         else {
             unreachable!()
         };
+        let can_go_back_to_installer = *can_go_back_to_installer;
 
         Self::mod_name(ui, instance, mod_name, mod_already_exists);
 
@@ -491,6 +506,29 @@ impl OngoingModInstallation {
                     if self.background_task_queue.send(task).is_err() {
                         error!("background task panicked");
                     }
+                }
+
+                if can_go_back_to_installer && ui.button("Back").clicked() {
+                    let State::ExtractDialog {
+                        mod_name,
+                        mod_already_exists,
+                        archive,
+                        mut installable_archive,
+                        ..
+                    } = mem::replace(&mut self.state, State::Closing)
+                    else {
+                        unreachable!()
+                    };
+
+                    installable_archive.installer.back(instance);
+
+                    self.state = State::InstallerDialog {
+                        mod_name,
+                        mod_already_exists,
+                        archive,
+                        installable_archive,
+                        installer_dialog: FomodDialog::new(),
+                    };
                 }
             },
         );
