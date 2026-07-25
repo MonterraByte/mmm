@@ -15,24 +15,24 @@ jobs:
   check:
     runs-on: ubuntu-latest
     env:
-      RUSTFLAGS: -D warnings
+      CARGO_BUILD_WARNINGS: deny
     steps:
       - uses: dtolnay/rust-toolchain@nightly
       - uses: r7kamura/rust-problem-matchers@v1
       - uses: actions/checkout@v6
-      - run: cargo check --workspace --all-targets
+      - run: cargo check --workspace --all-targets --keep-going
 
   clippy:
     runs-on: ubuntu-latest
     env:
-      RUSTFLAGS: -D warnings
+      CARGO_BUILD_WARNINGS: deny
     steps:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: clippy
       - uses: r7kamura/rust-problem-matchers@v1
       - uses: actions/checkout@v6
-      - run: cargo clippy --workspace --all-targets
+      - run: cargo clippy --workspace --all-targets --keep-going
 
   test:
     runs-on: ubuntu-latest
