@@ -13,7 +13,7 @@ arrayvec = "0.7"
 camino = "1.2"
 cbor4ii = { version = "1.2", features = ["serde1", "use_std"] }
 clap = { version = "4.6", features = ["derive"] }
-compact_str = { version = "0.9", features = ["serde"] }
+compact_str = { version = "0.10", features = ["serde"] }
 flexstr = "0.11"
 foldhash = "0.2"
 inline_flexstr = "0.1"
