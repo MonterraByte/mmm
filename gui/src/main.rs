@@ -158,7 +158,7 @@ impl App for ModManagerUi {
             .values_mut()
             .for_each(|details| details.update(ctx));
         self.ongoing_mod_installs
-            .retain_mut(|install| install.update(ctx).into());
+            .retain_mut(|install| install.update(ctx, &self.instance).into());
 
         self.instance.save();
     }

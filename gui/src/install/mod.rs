@@ -75,6 +75,10 @@ enum State {
         text: CompactString,
         path: Arc<Path>,
     },
+    InstallerDialog {
+        mod_name: String,
+        mod_already_exists: Option<bool>,
+    },
     ExtractDialog {
         mod_name: String,
         mod_already_exists: Option<bool>,
@@ -133,7 +137,7 @@ impl OngoingModInstallation {
         })
     }
 
-    pub fn update(&mut self, ctx: &egui::Context) -> ViewportResult {
+    pub fn update(&mut self, ctx: &egui::Context, instance: &EditableInstance) -> ViewportResult {
         match &mut self.state {
             State::FilePicker(picker) => match picker.as_mut().poll(&mut Context::from_waker(&noop_waker())) {
                 Poll::Pending => {
@@ -162,21 +166,23 @@ impl OngoingModInstallation {
                 if handle.as_ref().expect("not joined yet").is_finished() {
                     let handle = handle.take().expect("not joined yet");
                     self.state = match handle.join() {
-                        Ok(Ok((archive, installable_archive))) => {
+                        Ok(Ok((archive, mut installable_archive))) => {
                             let mod_name = installable_archive.mod_name().map_or_else(
                                 || path.file_stem().and_then(OsStr::to_str).unwrap_or_default().to_owned(),
                                 |s| s.to_owned(),
                             );
 
-                            let extract_selection = ExtractSelection::entire_archive(&archive);
-
-                            State::ExtractDialog {
-                                mod_name,
-                                mod_already_exists: None,
-                                archive,
-                                extract_selection,
-                                tree_display: TreeDisplay::new(),
-                                dir_checkbox_cache: HashMap::default(),
+                            match installable_archive.installer.init(&archive, instance) {
+                                Ok(Some(extract_selection)) => State::ExtractDialog {
+                                    mod_name,
+                                    mod_already_exists: None,
+                                    archive,
+                                    extract_selection,
+                                    tree_display: TreeDisplay::new(),
+                                    dir_checkbox_cache: HashMap::default(),
+                                },
+                                Ok(None) => State::InstallerDialog { mod_name, mod_already_exists: None },
+                                Err(err) => State::Error(err),
                             }
                         }
                         Ok(Err(err)) => {
@@ -201,7 +207,7 @@ impl OngoingModInstallation {
 
                 ViewportResult::Keep
             }
-            State::ExtractDialog { .. } | State::Error(_) => ViewportResult::Keep,
+            State::ExtractDialog { .. } | State::InstallerDialog { .. } | State::Error(_) => ViewportResult::Keep,
             State::Closing => ViewportResult::Drop,
         }
     }
@@ -227,6 +233,10 @@ impl OngoingModInstallation {
                     });
                 })
             }
+            State::InstallerDialog { .. } => {
+                let viewport = self.viewport.as_ref().expect("viewport has been created").as_ref();
+                show_immediate_panel!(viewport, ui, |ui| self.installer_dialog(ui, instance))
+            }
             State::ExtractDialog { .. } => {
                 let viewport = self.viewport.as_ref().expect("viewport has been created").as_ref();
                 show_immediate_panel!(viewport, ui, |ui| self.extract_dialog(ui, instance))
@@ -248,6 +258,14 @@ impl OngoingModInstallation {
                 })
             }
         }
+    }
+
+    fn installer_dialog(&mut self, ui: &mut Ui, instance: &EditableInstance) {
+        let State::InstallerDialog { mod_name, mod_already_exists, .. } = &mut self.state else {
+            unreachable!()
+        };
+
+        Self::mod_name(ui, instance, mod_name, mod_already_exists);
     }
 
     fn extract_dialog(&mut self, ui: &mut Ui, instance: &EditableInstance) {
