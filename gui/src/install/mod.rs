@@ -15,6 +15,8 @@
 
 //! Mod installation dialog.
 
+mod fomod;
+
 use std::assert_matches;
 use std::ffi::OsStr;
 use std::fmt::Write;
@@ -47,11 +49,12 @@ use mmm_core::instance::Instance;
 use mmm_edit::EditableInstance;
 use mmm_edit::archive::{Archive, ExtractSelection};
 use mmm_edit::install::staging::StagedInstall;
-use mmm_edit::install::{InstallableArchive, Warnings};
+use mmm_edit::install::{InstallableArchive, Installer, Warnings};
 use mmm_edit::util::node_ord;
 
 use crate::ModManagerUi;
 use crate::background_task::{BackgroundTask, Finalizer, StatusString};
+use crate::install::fomod::FomodDialog;
 use crate::tree::{TreeDisplay, dnd_handle_actions_fn};
 use crate::utils::{Viewport, ViewportResult, show_error_message, show_frame_with_buttons, show_immediate_panel};
 
@@ -81,7 +84,9 @@ enum State {
     InstallerDialog {
         mod_name: String,
         mod_already_exists: Option<bool>,
+        archive: Archive,
         installable_archive: Box<InstallableArchive>,
+        installer_dialog: FomodDialog,
     },
     ExtractDialog {
         mod_name: String,
@@ -188,7 +193,9 @@ impl OngoingModInstallation {
                                 Ok(None) => State::InstallerDialog {
                                     mod_name,
                                     mod_already_exists: None,
+                                    archive,
                                     installable_archive,
+                                    installer_dialog: FomodDialog::new(),
                                 },
                                 Err(err) => State::Error(err),
                             }
@@ -271,13 +278,39 @@ impl OngoingModInstallation {
 
     fn installer_dialog(&mut self, ui: &mut Ui, viewport_id: ViewportId, instance: &EditableInstance) {
         let State::InstallerDialog {
-            mod_name, mod_already_exists, installable_archive, ..
+            mod_name,
+            mod_already_exists,
+            archive,
+            installable_archive,
+            installer_dialog,
+            ..
         } = &mut self.state
         else {
             unreachable!()
         };
 
         Self::mod_name(ui, instance, mod_name, mod_already_exists);
+
+        let Installer::Fomod(fomod) = &mut installable_archive.installer else {
+            unreachable!()
+        };
+        if let Some(extract_selection) = installer_dialog.show(ui, archive, fomod, instance) {
+            let State::InstallerDialog { mod_name, mod_already_exists, archive, .. } =
+                mem::replace(&mut self.state, State::Closing)
+            else {
+                unreachable!()
+            };
+
+            self.state = State::ExtractDialog {
+                mod_name,
+                mod_already_exists,
+                archive,
+                extract_selection,
+                tree_display: TreeDisplay::new(),
+                dir_checkbox_cache: HashMap::default(),
+            };
+            return;
+        }
 
         if !installable_archive.warnings.is_empty() {
             let id = viewport_id.0.with("warnings");
