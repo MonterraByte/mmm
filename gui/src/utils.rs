@@ -16,7 +16,7 @@
 use std::cell::Cell;
 
 use eframe::egui;
-use egui::{Align, Label, ScrollArea, Ui, Vec2, ViewportBuilder, ViewportId};
+use egui::{Align, CornerRadius, Frame, Label, ScrollArea, Sides, Ui, Vec2, ViewportBuilder, ViewportId};
 
 pub struct Viewport {
     pub id: ViewportId,
@@ -72,6 +72,23 @@ impl From<ViewportResult> for bool {
     fn from(value: ViewportResult) -> Self {
         matches!(value, ViewportResult::Keep)
     }
+}
+
+pub fn show_frame_with_buttons(
+    ui: &mut Ui,
+    add_frame_contents: impl FnOnce(&mut Ui),
+    add_left_buttons: impl FnOnce(&mut Ui),
+    add_right_buttons: impl FnOnce(&mut Ui),
+) {
+    Frame::new()
+        .stroke(ui.style().visuals.window_stroke)
+        .corner_radius(CornerRadius::same(4))
+        .show(ui, |ui| {
+            ui.set_max_height(ui.available_height() - ui.style().spacing.interact_size.y);
+            add_frame_contents(ui);
+        });
+
+    Sides::new().show(ui, add_left_buttons, add_right_buttons);
 }
 
 pub fn show_error_message(ui: &mut Ui, err: &str) {

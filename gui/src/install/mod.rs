@@ -48,7 +48,7 @@ use mmm_edit::util::node_ord;
 use crate::ModManagerUi;
 use crate::background_task::{BackgroundTask, Finalizer, StatusString};
 use crate::tree::{TreeDisplay, dnd_handle_actions_fn};
-use crate::utils::{Viewport, ViewportResult, show_error_message, show_immediate_panel};
+use crate::utils::{Viewport, ViewportResult, show_error_message, show_frame_with_buttons, show_immediate_panel};
 
 pub struct OngoingModInstallation {
     viewport: Option<Box<Viewport>>,
@@ -223,7 +223,16 @@ impl OngoingModInstallation {
             State::Error(err) => {
                 let viewport = self.viewport.as_ref().expect("viewport has been created").as_ref();
                 show_immediate_panel!(viewport, ui, |ui| {
-                    show_error_message(ui, err);
+                    show_frame_with_buttons(
+                        ui,
+                        |ui| show_error_message(ui, err),
+                        |_| (),
+                        |ui| {
+                            if ui.button("Close").clicked() {
+                                ui.send_viewport_cmd(ViewportCommand::Close);
+                            }
+                        },
+                    );
                 })
             }
         }
