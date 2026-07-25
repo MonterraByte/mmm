@@ -20,6 +20,7 @@ pub mod module_config;
 
 use std::fmt::{self, Debug, Display};
 
+use camino::Utf8Path;
 use foldhash::{HashMap, HashSet};
 use nary_tree::NodeId;
 use roxmltree::{Node, TextPos};
@@ -117,6 +118,27 @@ impl FomodInstaller {
             allow_disabling_required_plugins: false,
             allow_unusable_plugins: false,
         }
+    }
+
+    pub(super) fn resolve_images(&mut self, archive: &mut Archive) -> Vec<&NodeId> {
+        let plugin_images = self.module_config.install_steps.as_mut().iter_mut().flat_map(|step| {
+            step.file_groups
+                .as_mut()
+                .iter_mut()
+                .flat_map(|group| group.plugins.as_mut().iter_mut().flat_map(|plugin| &mut plugin.image))
+        });
+        let images = self.module_config.image.iter_mut().chain(plugin_images);
+
+        let mut ids = Vec::new();
+        for image in images {
+            let path = Utf8Path::new(image.path.as_ref());
+            image.node = find_node_by_case_insensitive_path(archive.tree(), self.root, path).node_id();
+
+            if let Some(id) = &image.node {
+                ids.push(id);
+            }
+        }
+        ids
     }
 
     #[must_use]

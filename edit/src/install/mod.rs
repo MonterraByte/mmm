@@ -21,6 +21,8 @@ pub mod staging;
 use std::collections::BTreeMap;
 
 use arrayvec::ArrayVec;
+use foldhash::HashMap;
+use nary_tree::NodeId;
 use thiserror::Error;
 
 use crate::EditableInstance;
@@ -38,6 +40,7 @@ pub struct InstallableArchive {
     pub installer: Installer,
     pub metadata: Metadata,
     pub warnings: Warnings,
+    pub images: HashMap<NodeId, Vec<u8>>,
 }
 
 impl InstallableArchive {
@@ -45,6 +48,7 @@ impl InstallableArchive {
         let mut installer = Installer::default();
         let mut metadata = Metadata::default();
         let mut warnings = BTreeMap::new();
+        let mut images = HashMap::default();
 
         if let Some(fomod) = FomodFiles::probe(archive) {
             let file_ids: ArrayVec<_, { FomodFiles::FILE_COUNT }> = fomod.ids().collect();
@@ -53,7 +57,13 @@ impl InstallableArchive {
                 .map_err(FromArchiveError::ArchiveRead)?;
 
             if let Some(result) = fomod.get_installer(&mut files) {
-                let (mc, mc_warnings) = result?;
+                let (mut mc, mc_warnings) = result?;
+
+                let fomod_image_ids = mc.resolve_images(archive);
+                let fomod_images = archive
+                    .read_files(&fomod_image_ids)
+                    .map_err(FromArchiveError::ArchiveRead)?;
+                images.extend(fomod_images);
 
                 installer = Installer::Fomod(mc);
 
@@ -80,7 +90,7 @@ impl InstallableArchive {
             }
         }
 
-        Ok(Box::new(Self { installer, metadata, warnings }))
+        Ok(Box::new(Self { installer, metadata, warnings, images }))
     }
 }
 

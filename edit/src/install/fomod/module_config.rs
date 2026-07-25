@@ -19,6 +19,7 @@ use std::cmp::Ordering;
 use std::debug_assert_matches;
 
 use camino::Utf8Path;
+use nary_tree::NodeId;
 use roxmltree::{Document, Node};
 use thiserror::Error;
 
@@ -30,7 +31,6 @@ type Result<T, E = McError> = std::result::Result<T, E>;
 type WarningVec = Vec<McError>;
 
 /// FOMOD installer data.
-#[expect(unused)]
 #[derive(Debug, Default)]
 pub(super) struct ModuleConfig {
     /// The name of the mod.
@@ -985,11 +985,16 @@ impl ConditionalFileInstall {
 pub struct Image {
     /// Path to the image from the FOMOD root.
     pub path: SharedStr,
+
+    /// `NodeId` of the image in the archive.
+    ///
+    /// Always `None` after parsing, gets populated by [`resolve_images`](super::FomodInstaller::resolve_images).
+    pub node: Option<NodeId>,
 }
 
 impl Image {
     const fn new(path: SharedStr) -> Self {
-        Self { path }
+        Self { path, node: None }
     }
 
     pub fn from_node(node: &Node) -> Option<Self> {
