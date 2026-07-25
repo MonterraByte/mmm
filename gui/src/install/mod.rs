@@ -31,7 +31,10 @@ use std::time::{Duration, Instant};
 use anyhow::Context as _;
 use compact_str::CompactString;
 use eframe::egui;
-use egui::{Checkbox, CornerRadius, Frame, RichText, Sides, TextStyle, Ui, Vec2, ViewportCommand, ViewportId};
+use egui::{
+    Checkbox, CornerRadius, Frame, Label, Modal, RichText, ScrollArea, Sides, TextStyle, Ui, Vec2, ViewportCommand,
+    ViewportId,
+};
 use foldhash::HashMap;
 use futures::task::noop_waker;
 use nary_tree::NodeId;
@@ -43,8 +46,8 @@ use mmm_core::file_tree::{Counters, FileTree, TreeNodeKind, TreeNodeRef};
 use mmm_core::instance::Instance;
 use mmm_edit::EditableInstance;
 use mmm_edit::archive::{Archive, ExtractSelection};
-use mmm_edit::install::InstallableArchive;
 use mmm_edit::install::staging::StagedInstall;
+use mmm_edit::install::{InstallableArchive, Warnings};
 use mmm_edit::util::node_ord;
 
 use crate::ModManagerUi;
@@ -78,6 +81,7 @@ enum State {
     InstallerDialog {
         mod_name: String,
         mod_already_exists: Option<bool>,
+        installable_archive: Box<InstallableArchive>,
     },
     ExtractDialog {
         mod_name: String,
@@ -181,7 +185,11 @@ impl OngoingModInstallation {
                                     tree_display: TreeDisplay::new(),
                                     dir_checkbox_cache: HashMap::default(),
                                 },
-                                Ok(None) => State::InstallerDialog { mod_name, mod_already_exists: None },
+                                Ok(None) => State::InstallerDialog {
+                                    mod_name,
+                                    mod_already_exists: None,
+                                    installable_archive,
+                                },
                                 Err(err) => State::Error(err),
                             }
                         }
@@ -235,7 +243,8 @@ impl OngoingModInstallation {
             }
             State::InstallerDialog { .. } => {
                 let viewport = self.viewport.as_ref().expect("viewport has been created").as_ref();
-                show_immediate_panel!(viewport, ui, |ui| self.installer_dialog(ui, instance))
+                let viewport_id = viewport.id;
+                show_immediate_panel!(viewport, ui, |ui| self.installer_dialog(ui, viewport_id, instance))
             }
             State::ExtractDialog { .. } => {
                 let viewport = self.viewport.as_ref().expect("viewport has been created").as_ref();
@@ -260,12 +269,55 @@ impl OngoingModInstallation {
         }
     }
 
-    fn installer_dialog(&mut self, ui: &mut Ui, instance: &EditableInstance) {
-        let State::InstallerDialog { mod_name, mod_already_exists, .. } = &mut self.state else {
+    fn installer_dialog(&mut self, ui: &mut Ui, viewport_id: ViewportId, instance: &EditableInstance) {
+        let State::InstallerDialog {
+            mod_name, mod_already_exists, installable_archive, ..
+        } = &mut self.state
+        else {
             unreachable!()
         };
 
         Self::mod_name(ui, instance, mod_name, mod_already_exists);
+
+        if !installable_archive.warnings.is_empty() {
+            let id = viewport_id.0.with("warnings");
+            Modal::new(id).show(ui, |ui| {
+                ui.set_min_width(300.0);
+                ui.heading(if installable_archive.warnings.len() > 1 {
+                    "Warnings"
+                } else {
+                    "Warning"
+                });
+
+                ScrollArea::both().show(ui, |ui| {
+                    let mut first = true;
+                    for (source, ws) in &installable_archive.warnings {
+                        if first {
+                            first = false;
+                        } else {
+                            ui.separator();
+                        }
+
+                        ui.label(source.name());
+
+                        for warning in ws {
+                            let label = Label::new(warning).wrap();
+                            ui.add(label);
+                        }
+                    }
+                });
+
+                Sides::new().show(
+                    ui,
+                    |_| (),
+                    |ui| {
+                        if ui.button("Close").clicked() {
+                            installable_archive.warnings = Warnings::new();
+                        }
+                    },
+                );
+            });
+        }
     }
 
     fn extract_dialog(&mut self, ui: &mut Ui, instance: &EditableInstance) {
