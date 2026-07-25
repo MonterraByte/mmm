@@ -24,8 +24,8 @@ use std::io;
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -56,7 +56,9 @@ use crate::ModManagerUi;
 use crate::background_task::{BackgroundTask, Finalizer, StatusString};
 use crate::install::fomod::FomodDialog;
 use crate::tree::{TreeDisplay, dnd_handle_actions_fn};
-use crate::utils::{Viewport, ViewportResult, show_error_message, show_frame_with_buttons, show_immediate_panel};
+use crate::utils::{
+    Image, Viewport, ViewportResult, show_error_message, show_frame_with_buttons, show_immediate_panel,
+};
 
 pub struct OngoingModInstallation {
     viewport: Option<Box<Viewport>>,
@@ -87,12 +89,14 @@ enum State {
         archive: Archive,
         installable_archive: Box<InstallableArchive>,
         installer_dialog: FomodDialog,
+        images: Images,
     },
     ExtractDialog {
         mod_name: String,
         mod_already_exists: Option<bool>,
         archive: Archive,
         installable_archive: Box<InstallableArchive>,
+        installer_images: Option<Images>,
         can_go_back_to_installer: bool,
         extract_selection: ExtractSelection,
         tree_display: TreeDisplay,
@@ -107,6 +111,8 @@ enum CheckboxState {
     Partial,
     Unchecked,
 }
+
+type Images = Arc<Mutex<HashMap<NodeId, Image>>>;
 
 impl OngoingModInstallation {
     pub fn new_with_file_picker(frame: &eframe::Frame, background_task_queue: Sender<BackgroundTask>) -> Self {
@@ -189,18 +195,40 @@ impl OngoingModInstallation {
                                     mod_already_exists: None,
                                     archive,
                                     installable_archive,
+                                    installer_images: None,
                                     can_go_back_to_installer: false,
                                     extract_selection,
                                     tree_display: TreeDisplay::new(),
                                     dir_checkbox_cache: HashMap::default(),
                                 },
-                                Ok(None) => State::InstallerDialog {
-                                    mod_name,
-                                    mod_already_exists: None,
-                                    archive,
-                                    installable_archive,
-                                    installer_dialog: FomodDialog::new(),
-                                },
+                                Ok(None) => {
+                                    let images = HashMap::from_iter(
+                                        installable_archive.images.keys().map(|k| (*k, Image::NotLoaded)),
+                                    );
+                                    let images = Arc::new(Mutex::new(images));
+                                    if !installable_archive.images.is_empty() {
+                                        let image_data = mem::take(&mut installable_archive.images);
+                                        let images = Arc::clone(&images);
+                                        let ctx = ctx.clone();
+                                        thread::Builder::new()
+                                            .spawn(move || {
+                                                for (node_id, image_bytes) in image_data {
+                                                    let image = Image::load(&ctx, &image_bytes);
+                                                    images.lock().expect("lock is not poisoned").insert(node_id, image);
+                                                }
+                                            })
+                                            .expect("can spawn thread");
+                                    }
+
+                                    State::InstallerDialog {
+                                        mod_name,
+                                        mod_already_exists: None,
+                                        archive,
+                                        installable_archive,
+                                        installer_dialog: FomodDialog::new(),
+                                        images,
+                                    }
+                                }
                                 Err(err) => State::Error(err),
                             }
                         }
@@ -287,6 +315,7 @@ impl OngoingModInstallation {
             archive,
             installable_archive,
             installer_dialog,
+            images,
             ..
         } = &mut self.state
         else {
@@ -298,12 +327,13 @@ impl OngoingModInstallation {
         let Installer::Fomod(fomod) = &mut installable_archive.installer else {
             unreachable!()
         };
-        if let Some(extract_selection) = installer_dialog.show(ui, archive, fomod, instance) {
+        if let Some(extract_selection) = installer_dialog.show(ui, archive, fomod, instance, images) {
             let State::InstallerDialog {
                 mod_name,
                 mod_already_exists,
                 archive,
                 installable_archive,
+                images,
                 ..
             } = mem::replace(&mut self.state, State::Closing)
             else {
@@ -317,6 +347,7 @@ impl OngoingModInstallation {
                 mod_already_exists,
                 archive,
                 installable_archive,
+                installer_images: Some(images),
                 can_go_back_to_installer,
                 extract_selection,
                 tree_display: TreeDisplay::new(),
@@ -514,6 +545,7 @@ impl OngoingModInstallation {
                         mod_already_exists,
                         archive,
                         mut installable_archive,
+                        installer_images,
                         ..
                     } = mem::replace(&mut self.state, State::Closing)
                     else {
@@ -521,6 +553,7 @@ impl OngoingModInstallation {
                     };
 
                     installable_archive.installer.back(instance);
+                    let images = installer_images.unwrap_or_default();
 
                     self.state = State::InstallerDialog {
                         mod_name,
@@ -528,6 +561,7 @@ impl OngoingModInstallation {
                         archive,
                         installable_archive,
                         installer_dialog: FomodDialog::new(),
+                        images,
                     };
                 }
             },

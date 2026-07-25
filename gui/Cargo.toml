@@ -14,6 +14,7 @@ clap = { workspace = true }
 compact_str = { workspace = true }
 foldhash = { workspace = true }
 futures = { version = "0.3", default-features = false }
+image = { version = "0.25", default-features = false, features = ["avif", "bmp", "gif", "jpeg", "png", "webp"] }
 mmm-core = { path = "../core" }
 mmm-edit = { path = "../edit" }
 nary_tree = { workspace = true }

@@ -17,6 +17,7 @@ use std::time::Instant;
 
 use eframe::egui;
 use egui::{Button, CornerRadius, Frame, Id, Label, Panel, Popup, ScrollArea, Sides, TextStyle, Ui, ViewportCommand};
+use nary_tree::NodeId;
 
 use mmm_edit::EditableInstance;
 use mmm_edit::archive::{Archive, ExtractSelection};
@@ -24,10 +25,13 @@ use mmm_edit::install::fomod::module_config::{FileGroup, FileGroupType, PluginNa
 use mmm_edit::install::fomod::{FomodInstaller, InstallStepState};
 use mmm_edit::util::{EMPTY_STR, SharedStr};
 
+use crate::install::Images;
+
 pub struct FomodDialog {
     can_go_back: Option<bool>,
     can_go_forward: Option<bool>,
     description: Option<SharedStr>,
+    image: Option<NodeId>,
     left_panel_id: Id,
     top_panel_id: Id,
 }
@@ -38,6 +42,7 @@ impl FomodDialog {
             can_go_back: None,
             can_go_forward: None,
             description: None,
+            image: None,
             left_panel_id: Id::new(("fomod_left", Instant::now())),
             top_panel_id: Id::new(("fomod_top", Instant::now())),
         }
@@ -49,10 +54,12 @@ impl FomodDialog {
         archive: &Archive,
         fomod: &mut FomodInstaller,
         instance: &EditableInstance,
+        images: &Images,
     ) -> Option<ExtractSelection> {
         let (step, step_state) = fomod
             .current_step()
             .expect("installer has been initialized and hasn't ended");
+        let images = images.lock().expect("lock is not poisoned");
         let mut toggled = None;
 
         ui.heading(step.name.as_ref());
@@ -81,6 +88,12 @@ impl FomodDialog {
                                     ui.add(Label::new(description).wrap());
                                 });
                             });
+
+                        if let Some(image_node) = &self.image
+                            && let Some(image) = images.get(image_node)
+                        {
+                            ui.centered_and_justified(|ui| image.show(ui));
+                        }
                     });
 
                 ui.take_available_width();
@@ -95,7 +108,7 @@ impl FomodDialog {
                         }
 
                         if let Some(plugin_name) =
-                            Self::show_file_group(ui, fomod, step_state, group, &mut self.description)
+                            Self::show_file_group(ui, fomod, step_state, group, &mut self.description, &mut self.image)
                         {
                             toggled = Some((group.name.clone(), plugin_name));
                         }
@@ -117,6 +130,7 @@ impl FomodDialog {
         state: &InstallStepState,
         group: &FileGroup,
         description: &mut Option<SharedStr>,
+        image: &mut Option<NodeId>,
     ) -> Option<PluginName> {
         let selection = state.selection(&group.name).expect("group exists");
         let mut toggled = None;
@@ -160,6 +174,8 @@ impl FomodDialog {
                 } else {
                     *description = Some(plugin.description.clone());
                 }
+
+                *image = plugin.image.iter().find_map(|img| img.node);
             }
         }
 
@@ -196,6 +212,7 @@ impl FomodDialog {
                     self.can_go_back = None;
                     self.can_go_forward = None;
                     self.description = None;
+                    self.image = None;
                 }
 
                 let can_go_back = *self.can_go_back.get_or_insert_with(|| fomod.can_go_back(instance));
@@ -204,6 +221,7 @@ impl FomodDialog {
                     self.can_go_back = None;
                     self.can_go_forward = None;
                     self.description = None;
+                    self.image = None;
                 }
             },
         );

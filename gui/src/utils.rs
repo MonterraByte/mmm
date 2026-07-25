@@ -14,9 +14,13 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use std::cell::Cell;
+use std::sync::Arc;
 
 use eframe::egui;
-use egui::{Align, CornerRadius, Frame, Label, ScrollArea, Sides, Ui, Vec2, ViewportBuilder, ViewportId};
+use egui::{
+    Align, ColorImage, CornerRadius, Frame, ImageData, Label, ScrollArea, Sides, TextureHandle, TextureOptions, Ui,
+    Vec2, ViewportBuilder, ViewportId, load::SizedTexture,
+};
 
 pub struct Viewport {
     pub id: ViewportId,
@@ -97,4 +101,57 @@ pub fn show_error_message(ui: &mut Ui, err: &str) {
             ui.add(Label::new(err).extend().halign(Align::Min));
         })
     });
+}
+
+pub enum Image {
+    NotLoaded,
+    Loaded(TextureHandle),
+    Error(Box<str>),
+}
+
+impl Image {
+    pub fn load(ctx: &egui::Context, bytes: &[u8]) -> Self {
+        match load_image(bytes) {
+            Ok(image) => {
+                let texture = ctx.load_texture(String::new(), image, TextureOptions::default());
+                Image::Loaded(texture)
+            }
+            Err(err) => {
+                let err_msg = format!("failed to load image:\n{}", err).into_boxed_str();
+                Image::Error(err_msg)
+            }
+        }
+    }
+
+    pub fn show(&self, ui: &mut Ui) {
+        match self {
+            Self::NotLoaded => {
+                ui.spinner();
+            }
+            Self::Loaded(handle) => {
+                let image = egui::Image::from_texture(SizedTexture::from_handle(handle))
+                    .shrink_to_fit()
+                    .maintain_aspect_ratio(true);
+                ui.add(image);
+            }
+            Self::Error(err) => {
+                ui.label(err);
+            }
+        }
+    }
+}
+
+fn load_image(bytes: &[u8]) -> Result<ImageData, image::ImageError> {
+    let image = image::load_from_memory(bytes)?;
+    let size = [
+        image.width().try_into().expect("image size fits in usize"),
+        image.height().try_into().expect("image size fits in usize"),
+    ];
+    let rgba_image = image.to_rgba8();
+    let pixels = rgba_image.as_flat_samples();
+
+    Ok(ImageData::Color(Arc::new(ColorImage::from_rgba_unmultiplied(
+        size,
+        pixels.as_slice(),
+    ))))
 }
