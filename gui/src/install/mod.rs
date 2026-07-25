@@ -15,6 +15,7 @@
 
 //! Mod installation dialog.
 
+use std::assert_matches;
 use std::ffi::OsStr;
 use std::fmt::Write;
 use std::io;
@@ -56,7 +57,7 @@ pub struct OngoingModInstallation {
     background_task_queue: Sender<BackgroundTask>,
 }
 
-#[allow(
+#[expect(
     clippy::large_enum_variant,
     reason = "each instance will go through every enum variant unless canceled"
 )]
@@ -307,10 +308,10 @@ impl OngoingModInstallation {
         };
 
         let handle_actions_fn = dnd_handle_actions_fn(|tree, dnd| {
-            assert!(matches!(
+            assert_matches!(
                 tree.get(dnd.target).expect("node exists").data().kind,
                 TreeNodeKind::Dir
-            ));
+            );
 
             for node in dnd.source {
                 tree.get_mut(node).unwrap().append_to(dnd.target).unwrap();
