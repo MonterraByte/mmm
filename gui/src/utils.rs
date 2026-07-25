@@ -47,7 +47,20 @@ macro_rules! show_immediate {
     }};
 }
 
+macro_rules! show_immediate_panel {
+    ($viewport:expr, $ui:expr, $callback:expr) => {{
+        $ui.show_viewport_immediate($viewport.id, $viewport.builder.take(), |ui, _| {
+            if ui.input(|i| i.viewport().close_requested()) {
+                return ViewportResult::Drop;
+            }
+            ::eframe::egui::CentralPanel::default().show(ui, $callback);
+            ViewportResult::Keep
+        })
+    }};
+}
+
 pub(crate) use show_immediate;
+pub(crate) use show_immediate_panel;
 
 pub enum ViewportResult {
     Drop,

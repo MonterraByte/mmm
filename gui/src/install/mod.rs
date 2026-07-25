@@ -30,9 +30,7 @@ use std::time::{Duration, Instant};
 use anyhow::Context as _;
 use compact_str::CompactString;
 use eframe::egui;
-use egui::{
-    CentralPanel, Checkbox, CornerRadius, Frame, RichText, Sides, TextStyle, Ui, Vec2, ViewportCommand, ViewportId,
-};
+use egui::{Checkbox, CornerRadius, Frame, RichText, Sides, TextStyle, Ui, Vec2, ViewportCommand, ViewportId};
 use foldhash::HashMap;
 use futures::task::noop_waker;
 use nary_tree::NodeId;
@@ -50,7 +48,7 @@ use mmm_edit::util::node_ord;
 use crate::ModManagerUi;
 use crate::background_task::{BackgroundTask, Finalizer, StatusString};
 use crate::tree::{TreeDisplay, dnd_handle_actions_fn};
-use crate::utils::{Viewport, ViewportResult, show_error_message, show_immediate};
+use crate::utils::{Viewport, ViewportResult, show_error_message, show_immediate_panel};
 
 pub struct OngoingModInstallation {
     viewport: Option<Box<Viewport>>,
@@ -211,27 +209,21 @@ impl OngoingModInstallation {
                     )
                 });
 
-                show_immediate!(viewport, ui, |ui, _viewport| {
-                    CentralPanel::default().show(ui, |ui| {
-                        ui.centered_and_justified(|ui| {
-                            ui.label(text.as_str());
-                        });
+                show_immediate_panel!(viewport, ui, |ui| {
+                    ui.centered_and_justified(|ui| {
+                        ui.label(text.as_str());
                     });
                 })
             }
             State::ExtractDialog { .. } => {
                 let viewport = self.viewport.as_ref().expect("viewport has been created").as_ref();
-                show_immediate!(viewport, ui, |ui, _viewport| {
-                    CentralPanel::default().show(ui, |ui| self.extract_dialog(ui, instance));
-                })
+                show_immediate_panel!(viewport, ui, |ui| self.extract_dialog(ui, instance))
             }
             State::Closing => ViewportResult::Drop,
             State::Error(err) => {
                 let viewport = self.viewport.as_ref().expect("viewport has been created").as_ref();
-                show_immediate!(viewport, ui, |ui, _viewport| {
-                    CentralPanel::default().show(ui, |ui| {
-                        show_error_message(ui, err);
-                    });
+                show_immediate_panel!(viewport, ui, |ui| {
+                    show_error_message(ui, err);
                 })
             }
         }
