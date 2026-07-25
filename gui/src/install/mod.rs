@@ -50,7 +50,7 @@ use mmm_edit::util::node_ord;
 use crate::ModManagerUi;
 use crate::background_task::{BackgroundTask, Finalizer, StatusString};
 use crate::tree::{TreeDisplay, dnd_handle_actions_fn};
-use crate::utils::{Viewport, ViewportResult, show_immediate};
+use crate::utils::{Viewport, ViewportResult, show_error_message, show_immediate};
 
 pub struct OngoingModInstallation {
     viewport: Option<Box<Viewport>>,
@@ -230,9 +230,7 @@ impl OngoingModInstallation {
                 let viewport = self.viewport.as_ref().expect("viewport has been created").as_ref();
                 show_immediate!(viewport, ui, |ui, _viewport| {
                     CentralPanel::default().show(ui, |ui| {
-                        ui.centered_and_justified(|ui| {
-                            ui.label(err.as_ref());
-                        });
+                        show_error_message(ui, err);
                     });
                 })
             }

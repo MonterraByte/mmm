@@ -35,7 +35,7 @@ use mmm_edit::EditableInstance;
 use mmm_edit::util::node_ord;
 
 use crate::tree::{TreeDisplay, dnd_handle_actions_fn};
-use crate::utils::{Viewport, ViewportResult, show_immediate};
+use crate::utils::{Viewport, ViewportResult, show_error_message, show_immediate};
 
 enum Tree {
     Some(FileTree),
@@ -188,11 +188,7 @@ impl ModDetailsWindow {
                     ui.label(message.as_str());
                 });
             }
-            Tree::Error(err) => {
-                ui.centered_and_justified(|ui| {
-                    ui.label(err.as_ref());
-                });
-            }
+            Tree::Error(err) => show_error_message(ui, err),
         }
     }
 }

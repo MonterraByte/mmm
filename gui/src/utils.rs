@@ -16,7 +16,7 @@
 use std::cell::Cell;
 
 use eframe::egui;
-use egui::{Vec2, ViewportBuilder, ViewportId};
+use egui::{Align, Label, ScrollArea, Ui, Vec2, ViewportBuilder, ViewportId};
 
 pub struct Viewport {
     pub id: ViewportId,
@@ -59,4 +59,12 @@ impl From<ViewportResult> for bool {
     fn from(value: ViewportResult) -> Self {
         matches!(value, ViewportResult::Keep)
     }
+}
+
+pub fn show_error_message(ui: &mut Ui, err: &str) {
+    ScrollArea::both().show(ui, |ui| {
+        ui.centered_and_justified(|ui| {
+            ui.add(Label::new(err).extend().halign(Align::Min));
+        })
+    });
 }
