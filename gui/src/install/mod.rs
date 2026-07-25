@@ -43,6 +43,7 @@ use mmm_core::file_tree::{Counters, FileTree, TreeNodeKind, TreeNodeRef};
 use mmm_core::instance::Instance;
 use mmm_edit::EditableInstance;
 use mmm_edit::archive::{Archive, ExtractSelection};
+use mmm_edit::install::InstallableArchive;
 use mmm_edit::install::staging::StagedInstall;
 use mmm_edit::util::node_ord;
 
@@ -58,13 +59,17 @@ pub struct OngoingModInstallation {
 }
 
 #[expect(
+    clippy::type_complexity,
+    reason = "there's no good type definition that could be introduced for the handle type"
+)]
+#[expect(
     clippy::large_enum_variant,
     reason = "each instance will go through every enum variant unless canceled"
 )]
 enum State {
     FilePicker(Pin<Box<dyn Future<Output = Option<rfd::FileHandle>> + Send>>),
     Opening {
-        handle: Option<JoinHandle<anyhow::Result<Archive>>>,
+        handle: Option<JoinHandle<anyhow::Result<(Archive, Box<InstallableArchive>)>>>,
         counter: Arc<Counters>,
         previous_count: usize,
         text: CompactString,
@@ -113,8 +118,10 @@ impl OngoingModInstallation {
             let counter = counter_clone;
 
             debug!("opening archive '{}' for installation", path.display());
-            let archive = Archive::open(path, counter).context("failed to open archive")?;
-            Ok(archive)
+            let mut archive = Archive::open(path, counter).context("failed to open archive")?;
+            let installable_archive = InstallableArchive::from_archive(&mut archive)
+                .context("failed to load installer contained in archive")?;
+            Ok((archive, installable_archive))
         })?;
 
         Ok(State::Opening {
@@ -155,8 +162,11 @@ impl OngoingModInstallation {
                 if handle.as_ref().expect("not joined yet").is_finished() {
                     let handle = handle.take().expect("not joined yet");
                     self.state = match handle.join() {
-                        Ok(Ok(archive)) => {
-                            let mod_name = path.file_stem().and_then(OsStr::to_str).unwrap_or_default().to_owned();
+                        Ok(Ok((archive, installable_archive))) => {
+                            let mod_name = installable_archive.mod_name().map_or_else(
+                                || path.file_stem().and_then(OsStr::to_str).unwrap_or_default().to_owned(),
+                                |s| s.to_owned(),
+                            );
 
                             let extract_selection = ExtractSelection::entire_archive(&archive);
 
