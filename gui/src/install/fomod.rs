@@ -190,6 +190,8 @@ impl FomodDialog {
         instance: &EditableInstance,
     ) -> Option<ExtractSelection> {
         let mut selection = None;
+        let mut allow_unusable_plugins = fomod.allow_unusable_plugins;
+        let mut allow_disabling_required_plugins = fomod.allow_disabling_required_plugins;
 
         Sides::new().show(
             ui,
@@ -197,6 +199,11 @@ impl FomodDialog {
                 let response = ui.button("Options");
                 Popup::menu(&response).show(|ui| {
                     ui.label("Hacks:");
+                    ui.checkbox(&mut allow_unusable_plugins, "Allow selecting unusable plugins");
+                    ui.checkbox(
+                        &mut allow_disabling_required_plugins,
+                        "Allow disabling required plugins",
+                    );
                 });
             },
             |ui| {
@@ -225,6 +232,9 @@ impl FomodDialog {
                 }
             },
         );
+
+        fomod.allow_unusable_plugins = allow_unusable_plugins;
+        fomod.allow_disabling_required_plugins = allow_disabling_required_plugins;
 
         selection
     }

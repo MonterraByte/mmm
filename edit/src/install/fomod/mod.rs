@@ -102,8 +102,8 @@ pub struct FomodInstaller {
     install_step_states: Box<[InstallStepState]>,
     current_step: InstallerState,
 
-    allow_disabling_required_plugins: bool,
-    allow_unusable_plugins: bool,
+    pub allow_disabling_required_plugins: bool,
+    pub allow_unusable_plugins: bool,
 }
 
 impl FomodInstaller {
