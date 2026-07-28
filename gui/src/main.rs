@@ -18,8 +18,8 @@
 mod background_task;
 mod details;
 mod install;
-mod tree;
 mod utils;
+mod widgets;
 
 use std::collections::hash_map::Entry;
 use std::ffi::OsStr;

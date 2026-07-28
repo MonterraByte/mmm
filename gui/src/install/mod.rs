@@ -55,10 +55,10 @@ use mmm_edit::util::node_ord;
 use crate::ModManagerUi;
 use crate::background_task::{BackgroundTask, Finalizer, StatusString};
 use crate::install::fomod::FomodDialog;
-use crate::tree::{TreeDisplay, dnd_handle_actions_fn};
 use crate::utils::{
     Image, Viewport, ViewportResult, show_error_message, show_frame_with_buttons, show_immediate_panel,
 };
+use crate::widgets::tree::{TreeDisplay, dnd_handle_actions_fn};
 
 pub struct OngoingModInstallation {
     viewport: Option<Box<Viewport>>,

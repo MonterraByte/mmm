@@ -34,8 +34,8 @@ use mmm_core::instance::{Instance, ModEntryKind, ModIndex};
 use mmm_edit::EditableInstance;
 use mmm_edit::util::node_ord;
 
-use crate::tree::{TreeDisplay, dnd_handle_actions_fn};
 use crate::utils::{Viewport, ViewportResult, show_error_message, show_immediate};
+use crate::widgets::tree::{TreeDisplay, dnd_handle_actions_fn};
 
 enum Tree {
     Some(FileTree),
