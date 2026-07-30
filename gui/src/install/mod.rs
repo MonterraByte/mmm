@@ -22,11 +22,9 @@ use std::ffi::OsStr;
 use std::fmt::Write;
 use std::io;
 use std::mem;
-use std::path::{Path, PathBuf};
-use std::pin::Pin;
+use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -38,7 +36,6 @@ use egui::{
     ViewportId,
 };
 use foldhash::HashMap;
-use futures::task::noop_waker;
 use nary_tree::NodeId;
 use nary_tree::iter_mut::Lender;
 use rfd::AsyncFileDialog;
@@ -56,7 +53,8 @@ use crate::ModManagerUi;
 use crate::background_task::{BackgroundTask, Finalizer, StatusString};
 use crate::install::fomod::FomodDialog;
 use crate::utils::{
-    Image, Viewport, ViewportResult, show_error_message, show_frame_with_buttons, show_immediate_panel,
+    FilePicker, Image, PickerResult, Viewport, ViewportResult, show_error_message, show_frame_with_buttons,
+    show_immediate_panel,
 };
 use crate::widgets::tree::{TreeDisplay, dnd_handle_actions_fn};
 
@@ -75,7 +73,7 @@ pub struct OngoingModInstallation {
     reason = "each instance will go through every enum variant unless canceled"
 )]
 enum State {
-    FilePicker(Pin<Box<dyn Future<Output = Option<rfd::FileHandle>> + Send>>),
+    FilePicker(FilePicker),
     Opening {
         handle: Option<JoinHandle<anyhow::Result<(Archive, Box<InstallableArchive>)>>>,
         counter: Arc<Counters>,
@@ -118,9 +116,8 @@ impl OngoingModInstallation {
     pub fn new_with_file_picker(frame: &eframe::Frame, background_task_queue: Sender<BackgroundTask>) -> Self {
         let picker = AsyncFileDialog::new()
             .add_filter("Archive file", &["7z", "rar", "tar", "zip"])
-            .set_parent(frame)
-            .pick_file();
-        let picker = Box::pin(picker);
+            .set_parent(frame);
+        let picker = FilePicker::new(picker);
 
         Self {
             viewport: None,
@@ -156,13 +153,13 @@ impl OngoingModInstallation {
 
     pub fn update(&mut self, ctx: &egui::Context, instance: &EditableInstance) -> ViewportResult {
         match &mut self.state {
-            State::FilePicker(picker) => match picker.as_mut().poll(&mut Context::from_waker(&noop_waker())) {
-                Poll::Pending => {
+            State::FilePicker(picker) => match picker.poll() {
+                PickerResult::Pending => {
                     ctx.request_repaint_after(Duration::from_secs(1));
                     ViewportResult::Keep
                 }
-                Poll::Ready(Some(file)) => {
-                    let path: Arc<Path> = PathBuf::from(file).into();
+                PickerResult::Ready(path) => {
+                    let path: Arc<Path> = path.into();
                     match Self::new_opening_state(path) {
                         Ok(new_state) => {
                             self.state = new_state;
@@ -175,7 +172,7 @@ impl OngoingModInstallation {
                         }
                     }
                 }
-                Poll::Ready(None) => ViewportResult::Drop,
+                PickerResult::Closed => ViewportResult::Drop,
             },
             State::Opening { handle, counter, previous_count, text, path } => {
                 ctx.request_repaint_after(Duration::from_millis(100));

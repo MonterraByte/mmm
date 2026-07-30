@@ -14,13 +14,18 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use std::cell::Cell;
+use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use eframe::egui;
 use egui::{
     Align, ColorImage, CornerRadius, Frame, ImageData, Label, ScrollArea, Sides, TextureHandle, TextureOptions, Ui,
     Vec2, ViewportBuilder, ViewportId, load::SizedTexture,
 };
+use futures::task::noop_waker;
+use rfd::AsyncFileDialog;
 
 pub struct Viewport {
     pub id: ViewportId,
@@ -154,4 +159,31 @@ fn load_image(bytes: &[u8]) -> Result<ImageData, image::ImageError> {
         size,
         pixels.as_slice(),
     ))))
+}
+
+pub struct FilePicker(Pin<Box<dyn Future<Output = Option<rfd::FileHandle>> + Send>>);
+
+impl FilePicker {
+    pub fn new(file_dialog: AsyncFileDialog) -> Self {
+        let picker = file_dialog.pick_file();
+        Self(Box::pin(picker))
+    }
+
+    pub fn poll(&mut self) -> PickerResult {
+        match self.0.as_mut().poll(&mut Context::from_waker(&noop_waker())) {
+            Poll::Pending => PickerResult::Pending,
+            Poll::Ready(Some(file)) => {
+                let path = PathBuf::from(file); // gets the contained path without reallocating
+                PickerResult::Ready(path)
+            }
+            Poll::Ready(None) => PickerResult::Closed,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum PickerResult {
+    Pending,
+    Ready(PathBuf),
+    Closed,
 }
