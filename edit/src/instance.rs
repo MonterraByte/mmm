@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use std::fs;
+use std::fs::{self, File, TryLockError};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -37,6 +37,9 @@ use crate::util::move_multiple;
 use crate::writer::{WriteRequest, WriteTarget, spawn_writer_thread};
 use crate::{Mod, ModInitError};
 
+/// File name of the lock file in the instance's root directory.
+pub const INSTANCE_LOCK_FILE: &str = "mmm.lock";
+
 /// Implementation of [`Instance`] with editing support (for interactive applications).
 pub struct EditableInstance {
     dir: Arc<Path>,
@@ -44,6 +47,7 @@ pub struct EditableInstance {
     state: EditorState,
     write_queue: Sender<WriteRequest>,
     changed: bool,
+    _lock: File,
 }
 
 impl EditableInstance {
@@ -61,6 +65,14 @@ impl EditableInstance {
             .is_dir()
         {
             return Err(InstanceOpenError::NotADirectory(dir));
+        }
+
+        let lock_file = dir.join(INSTANCE_LOCK_FILE);
+        let lock = File::create(lock_file).unwrap();
+        match lock.try_lock() {
+            Ok(()) => {}
+            Err(TryLockError::WouldBlock) => return Err(InstanceOpenError::Locked),
+            Err(TryLockError::Error(err)) => return Err(InstanceOpenError::LockOpen(err)),
         }
 
         let data_file = dir.join(INSTANCE_DATA_FILE);
@@ -81,7 +93,14 @@ impl EditableInstance {
 
         let write_queue = spawn_writer_thread(&dir).map_err(InstanceOpenError::SpawnWriterThread)?;
 
-        let mut instance = Self { dir, data, state, write_queue, changed: false };
+        let mut instance = Self {
+            dir,
+            data,
+            state,
+            write_queue,
+            changed: false,
+            _lock: lock,
+        };
         instance.add_missing_mods_to_mod_order();
 
         Ok(instance)
@@ -121,6 +140,10 @@ pub enum InstanceOpenError {
     DirMetadata { source: io::Error, dir: Arc<Path> },
     #[error("'{0}' is not a directory")]
     NotADirectory(Arc<Path>),
+    #[error("failed to open lock file")]
+    LockOpen(#[source] io::Error),
+    #[error("this instance is open in another process")]
+    Locked,
     #[error("failed to open instance data file")]
     DataOpen(#[from] InstanceDataOpenError),
     #[error("failed to spawn writer thread")]
