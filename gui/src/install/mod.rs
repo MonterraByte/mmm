@@ -47,7 +47,7 @@ use mmm_edit::EditableInstance;
 use mmm_edit::archive::{Archive, ExtractSelection};
 use mmm_edit::install::staging::StagedInstall;
 use mmm_edit::install::{InstallableArchive, Installer, Warnings};
-use mmm_edit::util::node_ord;
+use mmm_edit::util::{LockExt, node_ord};
 
 use crate::ModManagerUi;
 use crate::background_task::{BackgroundTask, Finalizer, StatusString};
@@ -211,7 +211,7 @@ impl OngoingModInstallation {
                                             .spawn(move || {
                                                 for (node_id, image_bytes) in image_data {
                                                     let image = Image::load(&ctx, &image_bytes);
-                                                    images.lock().expect("lock is not poisoned").insert(node_id, image);
+                                                    images.lock_expect().insert(node_id, image);
                                                 }
                                             })
                                             .expect("can spawn thread");
@@ -503,7 +503,7 @@ impl OngoingModInstallation {
                     let mods_dir = instance.arc_dir();
                     let task = Box::new(move |status: &StatusString| {
                         {
-                            let mut s = status.lock().expect("lock is not poisoned");
+                            let mut s = status.lock_expect();
                             s.clear();
                             let _ = write!(s, "Installing mod {}", mod_name);
                         }

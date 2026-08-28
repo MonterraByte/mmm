@@ -20,8 +20,8 @@ use std::fmt::{self, Write};
 use std::ops::Deref;
 use std::str::Utf8Error;
 use std::string::FromUtf16Error;
-use std::sync::Arc;
 use std::sync::LazyLock;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use camino::{Utf8Component, Utf8Path};
 use icu_collator::options::{AlternateHandling, CaseLevel, CollatorOptions, Strength};
@@ -273,6 +273,20 @@ impl Deref for SharedStr {
 impl Default for SharedStr {
     fn default() -> Self {
         Self::empty()
+    }
+}
+
+/// Extension trait to reduce boilerplate when locking mutexes.
+pub trait LockExt<T> {
+    /// Acquires a mutex, blocking the current thread until it is able to do so.
+    ///
+    /// Will panic if another thread panicked while holding this lock.
+    fn lock_expect(&self) -> MutexGuard<'_, T>;
+}
+
+impl<T> LockExt<T> for Mutex<T> {
+    fn lock_expect(&self) -> MutexGuard<'_, T> {
+        self.lock().expect("lock is not poisoned")
     }
 }
 

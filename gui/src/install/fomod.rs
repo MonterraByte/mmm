@@ -23,7 +23,7 @@ use mmm_edit::EditableInstance;
 use mmm_edit::archive::{Archive, ExtractSelection};
 use mmm_edit::install::fomod::module_config::{FileGroup, FileGroupType, PluginName};
 use mmm_edit::install::fomod::{FomodInstaller, InstallStepState};
-use mmm_edit::util::{EMPTY_STR, SharedStr};
+use mmm_edit::util::{EMPTY_STR, LockExt, SharedStr};
 
 use crate::install::Images;
 
@@ -59,7 +59,7 @@ impl FomodDialog {
         let (step, step_state) = fomod
             .current_step()
             .expect("installer has been initialized and hasn't ended");
-        let images = images.lock().expect("lock is not poisoned");
+        let images = images.lock_expect();
         let mut toggled = None;
 
         ui.heading(step.name.as_ref());

@@ -45,6 +45,7 @@ use wgpu::{PowerPreference, PresentMode};
 
 use mmm_core::instance::{Instance, ModDeclaration, ModEntryKind, ModIndex, ModOrderIndex};
 use mmm_edit::EditableInstance;
+use mmm_edit::util::LockExt;
 
 use crate::background_task::{BackgroundTask, Finalizer, StatusString, spawn_background_thread};
 use crate::details::ModDetailsWindow;
@@ -572,7 +573,7 @@ impl ModManagerUi {
                         let task: BackgroundTask = Box::new(move |status| {
                             for path in paths {
                                 {
-                                    let mut s = status.lock().expect("lock is not poisoned");
+                                    let mut s = status.lock_expect();
                                     s.clear();
                                     let _ = write!(
                                         s,
@@ -605,7 +606,7 @@ impl ModManagerUi {
     }
 
     fn status_bar(&mut self, ui: &mut Ui) {
-        let status = self.background_task_status.lock().expect("lock is not poisoned");
+        let status = self.background_task_status.lock_expect();
         ui.label(status.as_str());
     }
 

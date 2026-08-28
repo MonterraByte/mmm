@@ -18,6 +18,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use mmm_edit::util::LockExt;
+
 use crate::ModManagerUi;
 
 pub type StatusString = Arc<Mutex<String>>;
@@ -35,7 +37,7 @@ pub fn spawn_background_thread() -> Result<(Sender<BackgroundTask>, Receiver<Fin
             if let Some(finalizer) = req(&status) {
                 let _ = finalizer_sender.send(finalizer);
             }
-            status.lock().expect("lock is not poisoned").clear();
+            status.lock_expect().clear();
         }
     })?;
 
