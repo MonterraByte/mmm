@@ -27,6 +27,8 @@ use egui::{
 use futures::task::noop_waker;
 use rfd::AsyncFileDialog;
 
+use mmm_edit::util::ErrorChainDisplay;
+
 pub struct Viewport {
     pub id: ViewportId,
     pub builder: Cell<ViewportBuilder>,
@@ -122,7 +124,7 @@ impl Image {
                 Image::Loaded(texture)
             }
             Err(err) => {
-                let err_msg = format!("failed to load image:\n{}", err).into_boxed_str();
+                let err_msg = format!("failed to load image:\n{:#}", ErrorChainDisplay(&err)).into_boxed_str();
                 Image::Error(err_msg)
             }
         }

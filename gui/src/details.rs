@@ -32,7 +32,7 @@ use mmm_core::file_tree::util::NodePathBuilder;
 use mmm_core::file_tree::{Counters, FileTree, FileTreeBuilder, IterDirError, TreeNodeKind, new_tree};
 use mmm_core::instance::{Instance, ModEntryKind, ModIndex};
 use mmm_edit::EditableInstance;
-use mmm_edit::util::node_ord;
+use mmm_edit::util::{ErrorChainDisplay, node_ord};
 
 use crate::utils::{Viewport, ViewportResult, show_error_message, show_immediate};
 use crate::widgets::tree::{TreeDisplay, dnd_handle_actions_fn};
@@ -107,8 +107,10 @@ impl ModDetailsWindow {
                 match handle.join() {
                     Ok(Ok(tree)) => self.tree = Tree::Some(tree),
                     Ok(Err(err)) => {
-                        error!(?err, "failed to build file tree");
-                        self.tree = Tree::Error(format!("Failed to build file tree:\n{}", err).into_boxed_str());
+                        error!("failed to build file tree: {}", ErrorChainDisplay(&err));
+                        self.tree = Tree::Error(
+                            format!("Failed to build file tree:\n{:#}", ErrorChainDisplay(&err)).into_boxed_str(),
+                        );
                     }
                     Err(_) => {
                         error!("file tree thread panicked");

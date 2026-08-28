@@ -276,6 +276,27 @@ impl Default for SharedStr {
     }
 }
 
+/// Wrapper for displaying the entire cause chain of an error.
+pub struct ErrorChainDisplay<'err>(pub &'err dyn std::error::Error);
+
+impl fmt::Display for ErrorChainDisplay<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)?;
+
+        let mut err = self.0;
+        while let Some(next) = err.source() {
+            err = next;
+            if f.alternate() {
+                write!(f, "\n\t- {}", err)?;
+            } else {
+                write!(f, ": {}", err)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Extension trait to reduce boilerplate when locking mutexes.
 pub trait LockExt<T> {
     /// Acquires a mutex, blocking the current thread until it is able to do so.

@@ -47,7 +47,7 @@ use mmm_edit::EditableInstance;
 use mmm_edit::archive::{Archive, ExtractSelection};
 use mmm_edit::install::staging::StagedInstall;
 use mmm_edit::install::{InstallableArchive, Installer, Warnings};
-use mmm_edit::util::{LockExt, node_ord};
+use mmm_edit::util::{ErrorChainDisplay, LockExt, node_ord};
 
 use crate::ModManagerUi;
 use crate::background_task::{BackgroundTask, Finalizer, StatusString};
@@ -231,7 +231,7 @@ impl OngoingModInstallation {
                         }
                         Ok(Err(err)) => {
                             error!(?err, ?path, "failed to open archive");
-                            State::Error(format!("Failed to open archive:\n{}", err).into_boxed_str())
+                            State::Error(format!("Failed to open archive:\n{:?}", err).into_boxed_str())
                         }
                         Err(_) => {
                             error!("archive read thread panicked");
@@ -512,14 +512,14 @@ impl OngoingModInstallation {
                         {
                             Ok(m) => m,
                             Err(err) => {
-                                error!(?err, "failed to extract archive");
+                                error!("failed to extract archive: {}", ErrorChainDisplay(&err));
                                 return None;
                             }
                         };
 
                         let finalizer: Finalizer = Box::new(move |mm: &mut ModManagerUi| {
                             if let Err(err) = mm.instance.add_staged_mod(&mod_name, staged_mod) {
-                                error!("failed to add staged mod: {}", err);
+                                error!("failed to add staged mod: {}", ErrorChainDisplay(&err));
                                 return;
                             }
 

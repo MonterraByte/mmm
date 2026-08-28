@@ -45,7 +45,7 @@ use wgpu::{PowerPreference, PresentMode};
 
 use mmm_core::instance::{Instance, ModDeclaration, ModEntryKind, ModIndex, ModOrderIndex};
 use mmm_edit::EditableInstance;
-use mmm_edit::util::LockExt;
+use mmm_edit::util::{ErrorChainDisplay, LockExt};
 
 use crate::background_task::{BackgroundTask, Finalizer, StatusString, spawn_background_thread};
 use crate::details::ModDetailsWindow;
@@ -69,7 +69,7 @@ fn main() -> anyhow::Result<()> {
 
     // https://github.com/emilk/egui/issues/5815
     if let Err(err) = eframe::run_native(APP_NAME, options, Box::new(|_ctx| Ok(ModManagerUi::new(instance)))) {
-        error!("failed to create graphics context: {err}");
+        error!("failed to create graphics context: {}", ErrorChainDisplay(&err));
         std::process::exit(1);
     }
 
@@ -464,7 +464,11 @@ impl ModManagerUi {
                     .instance
                     .create_mod(&self.create_new_mod_modal.input, self.create_new_mod_modal.kind)
                 {
-                    error!("failed to create mod '{}': {}", &self.create_new_mod_modal.input, err);
+                    error!(
+                        "failed to create mod '{}': {}",
+                        &self.create_new_mod_modal.input,
+                        ErrorChainDisplay(&err)
+                    );
                 }
 
                 self.mod_added();
@@ -522,7 +526,11 @@ impl ModManagerUi {
 
             if accepted && ModDeclaration::is_name_valid(&self.rename_mod_modal.input) {
                 if let Err(err) = self.instance.rename_mod(mod_idx, &self.rename_mod_modal.input) {
-                    error!("failed to rename mod to '{}': {}", &self.rename_mod_modal.input, err);
+                    error!(
+                        "failed to rename mod to '{}': {}",
+                        &self.rename_mod_modal.input,
+                        ErrorChainDisplay(&err)
+                    );
                 }
 
                 self.ongoing_mod_installs

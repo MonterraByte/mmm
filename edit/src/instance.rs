@@ -33,7 +33,7 @@ use mmm_core::instance::{
 };
 
 use crate::install::staging::{PlaceError, StagedInstall};
-use crate::util::move_multiple;
+use crate::util::{ErrorChainDisplay, move_multiple};
 use crate::writer::{WriteRequest, WriteTarget, spawn_writer_thread};
 use crate::{Mod, ModInitError};
 
@@ -119,7 +119,7 @@ impl EditableInstance {
         let content = match cbor4ii::serde::to_vec(Vec::new(), &self.data) {
             Ok(value) => value,
             Err(err) => {
-                error!("failed to serialize instance data: {}", err);
+                error!("failed to serialize instance data: {}", ErrorChainDisplay(&err));
                 return;
             }
         };
