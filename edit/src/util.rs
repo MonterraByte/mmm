@@ -28,6 +28,7 @@ use icu_collator::options::{AlternateHandling, CaseLevel, CollatorOptions, Stren
 use icu_collator::preferences::{CollationCaseFirst, CollationNumericOrdering};
 use icu_collator::{Collator, CollatorBorrowed, CollatorPreferences};
 use nary_tree::NodeId;
+use smallvec::SmallVec;
 use thiserror::Error;
 
 use mmm_core::file_tree::{FileTree, TreeNode, TreeNodeKind, TreeNodeRef};
@@ -370,7 +371,11 @@ impl<T> LockExt<T> for Mutex<T> {
 /// ```
 pub fn move_multiple<T>(slice: &mut [T], from: impl Iterator<Item = usize>, to: usize) -> usize {
     let item_indices = {
-        let mut vec: Vec<_> = from.collect();
+        // I picked an array of length 2 to make the SmallVec the same size as a regular Vec.
+        // Maybe another constant is better?
+        const { assert!(size_of::<SmallVec<[usize; 2]>>() == size_of::<Vec<usize>>()) }
+
+        let mut vec: SmallVec<[usize; 2]> = from.collect();
         vec.sort_unstable();
         vec
     };
