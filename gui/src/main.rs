@@ -34,7 +34,7 @@ use clap::Parser;
 use eframe::{App, Frame, NativeOptions, egui, egui_wgpu, wgpu};
 use egui::{
     Align, CentralPanel, Color32, Context, Id, Layout, Modal, Panel, Popup, ScrollArea, Sense, Sides, Stroke,
-    TextStyle, TextWrapMode, Ui, scroll_area::DragScroll,
+    TextStyle, TextWrapMode, Ui, Vec2, scroll_area::DragScroll,
 };
 use egui_extras::{Column, TableBuilder};
 use egui_wgpu::{WgpuSetup, WgpuSetupCreateNew};
@@ -80,6 +80,8 @@ fn native_options(instance: &EditableInstance) -> NativeOptions {
     let mut options = NativeOptions::default();
     options.viewport.app_id = Some(APP_NAME.into()); // https://github.com/emilk/egui/issues/7872
     options.viewport.title = Some(format!("mmm — {}", instance.dir().display()));
+    options.viewport.inner_size = Some(ModManagerUi::INITIAL_SIZE);
+    options.viewport.clamp_size_to_monitor_size = Some(true);
 
     // egui defaults to `AutoVsync` (https://github.com/emilk/egui/blob/0.34.3/crates/egui-wgpu/src/lib.rs#L335)
     // which selects `FifoRelaxed` if available, which we don't need.
@@ -183,6 +185,8 @@ impl App for ModManagerUi {
 }
 
 impl ModManagerUi {
+    pub const INITIAL_SIZE: Vec2 = Vec2::new(1200.0, 800.0);
+
     fn mod_added(&mut self) {
         self.ongoing_mod_installs
             .iter_mut()
