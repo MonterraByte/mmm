@@ -25,7 +25,7 @@ use std::path::Path;
 use cbor4ii::serde::DecodeError;
 use compact_str::CompactString;
 use const_format::formatcp;
-use serde::de::{Error, Visitor};
+use serde::de::{DeserializeOwned, Error, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 use typed_index_collections::TiVec;
@@ -60,6 +60,11 @@ impl InstanceData {
     /// Deserializes `InstanceData` from the file at the provided path.
     pub fn from_file(path: &Path) -> Result<Self, InstanceDataOpenError> {
         UnverifiedInstanceData::from_file(path)?.verify().map_err(Into::into)
+    }
+
+    #[must_use]
+    pub fn metadata(&self) -> InstanceMetadata {
+        InstanceMetadata { version: PhantomData, name: self.name.clone() }
     }
 }
 
@@ -117,19 +122,26 @@ impl Visitor<'_> for VersionVisitor {
 
 const VERSION_MISMATCH_ERROR_PREFIX: &str = formatcp!("expected data version {INSTANCE_DATA_VERSION}, found version ");
 
+fn read_and_parse_instance_data<T>(path: &Path) -> Result<T, InstanceDataOpenError>
+where
+    T: DeserializeOwned,
+{
+    let file = File::open(path).map_err(InstanceDataOpenError::Open)?;
+    let reader = BufReader::new(file);
+
+    cbor4ii::serde::from_reader(reader).map_err(|err| match err {
+        DecodeError::Custom(msg) if msg.starts_with(VERSION_MISMATCH_ERROR_PREFIX) => {
+            let (_, version_str) = msg.split_at(VERSION_MISMATCH_ERROR_PREFIX.len());
+            let version = version_str.parse().expect("error contains version number");
+            InstanceDataOpenError::UnsupportedVersion(version)
+        }
+        _ => InstanceDataOpenError::Deserialize(err),
+    })
+}
+
 impl UnverifiedInstanceData {
     pub fn from_file(path: &Path) -> Result<Self, InstanceDataOpenError> {
-        let file = File::open(path).map_err(InstanceDataOpenError::Open)?;
-        let reader = BufReader::new(file);
-
-        cbor4ii::serde::from_reader(reader).map_err(|err| match err {
-            DecodeError::Custom(msg) if msg.starts_with(VERSION_MISMATCH_ERROR_PREFIX) => {
-                let (_, version_str) = msg.split_at(VERSION_MISMATCH_ERROR_PREFIX.len());
-                let version = version_str.parse().expect("error contains version number");
-                InstanceDataOpenError::UnsupportedVersion(version)
-            }
-            _ => InstanceDataOpenError::Deserialize(err),
-        })
+        read_and_parse_instance_data(path)
     }
 
     pub fn verify(self) -> Result<InstanceData, InstanceDataVerificationError> {
@@ -157,6 +169,20 @@ impl UnverifiedInstanceData {
             }
         }
         Ok(())
+    }
+}
+
+/// Subset of `InstanceData` for identification purposes.
+#[derive(Debug, Deserialize)]
+pub struct InstanceMetadata {
+    #[serde(deserialize_with = "deserialize_version")]
+    version: PhantomData<u32>,
+    pub name: CompactString,
+}
+
+impl InstanceMetadata {
+    pub fn from_file(path: &Path) -> Result<Self, InstanceDataOpenError> {
+        read_and_parse_instance_data(path)
     }
 }
 
