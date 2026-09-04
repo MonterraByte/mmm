@@ -18,6 +18,7 @@ image = { version = "0.25", default-features = false, features = ["avif", "bmp",
 mmm-core = { path = "../core" }
 mmm-edit = { path = "../edit" }
 nary_tree = { workspace = true }
+open = "5"
 eframe = "0.35"
 egui_extras = "0.35"
 egui_ltreeview = "0.8"

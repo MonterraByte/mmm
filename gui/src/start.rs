@@ -164,6 +164,12 @@ impl StartUi {
 
                                 let response = ui.button("...");
                                 Popup::menu(&response).show(|ui| {
+                                    if ui.button("Open in file manager").clicked()
+                                        && let Err(err) = open::that_detached(location.as_os_str())
+                                    {
+                                        error!("failed to launch file manager: {}", ErrorChainDisplay(&err));
+                                    }
+
                                     if ui.button("Remove from list").clicked() {
                                         instance_to_remove = Some(Arc::clone(location));
                                     }
