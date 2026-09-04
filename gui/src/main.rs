@@ -35,7 +35,7 @@ use clap::Parser;
 use eframe::{App, AppCreator, Frame, NativeOptions, egui, egui_wgpu, wgpu};
 use egui::{
     Align, CentralPanel, Color32, Context, Id, Layout, Modal, Panel, Popup, ScrollArea, Sense, Sides, Stroke,
-    TextStyle, TextWrapMode, Ui, Vec2, ViewportCommand, scroll_area::DragScroll,
+    TextStyle, TextWrapMode, Theme, Ui, Vec2, ViewportCommand, scroll_area::DragScroll,
 };
 use egui_extras::{Column, TableBuilder};
 use egui_wgpu::{WgpuSetup, WgpuSetupCreateNew};
@@ -63,11 +63,11 @@ fn main() -> anyhow::Result<()> {
     let (app, title, size) = if let Some(path) = Args::parse().instance_path {
         let instance = EditableInstance::open(&path).context("failed to open instance")?;
         let title = format!("mmm — {}", instance.dir().display());
-        let app: AppCreator = Box::new(|_| Ok(AppUi::mod_manager(instance)));
+        let app = app_creator(|| AppUi::mod_manager(instance));
         (app, title, ModManagerUi::INITIAL_SIZE)
     } else {
         let title = "mmm".to_owned();
-        let app: AppCreator = Box::new(|_| Ok(AppUi::start()));
+        let app: AppCreator = app_creator(|| AppUi::start());
         (app, title, StartUi::INITIAL_SIZE)
     };
 
@@ -120,6 +120,22 @@ fn native_options(title: String, size: Vec2) -> NativeOptions {
     options.wgpu_options.wgpu_setup = WgpuSetup::CreateNew(wgpu_setup);
 
     options
+}
+
+fn app_creator<'app>(app: impl FnOnce() -> Box<dyn 'app + App> + 'app) -> AppCreator<'app> {
+    Box::new(|ctx| {
+        setup_theme(ctx);
+        Ok(app())
+    })
+}
+
+fn setup_theme(ctx: &eframe::CreationContext) {
+    ctx.egui_ctx.style_mut_of(Theme::Dark, |style| {
+        style.visuals.error_fg_color = Color32::from_rgb(247, 84, 100);
+    });
+    ctx.egui_ctx.style_mut_of(Theme::Light, |style| {
+        style.visuals.error_fg_color = Color32::from_rgb(245, 0, 0);
+    });
 }
 
 #[expect(clippy::large_enum_variant, reason = "the ModManager state is the important one")]
