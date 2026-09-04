@@ -138,7 +138,6 @@ fn setup_theme(ctx: &eframe::CreationContext) {
     });
 }
 
-#[expect(clippy::large_enum_variant, reason = "the ModManager state is the important one")]
 pub enum AppUi {
     Start(StartUi),
     ModManager(ModManagerUi),

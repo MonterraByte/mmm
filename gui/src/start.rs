@@ -13,23 +13,28 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use std::fmt::Write;
 use std::mem;
 use std::path::Path;
+use std::sync::Arc;
 
 use eframe::{App, egui};
-use egui::{CentralPanel, Context, Ui, Vec2};
+use egui::{CentralPanel, Context, Frame, Label, Popup, RichText, ScrollArea, Sense, Stroke, Ui, UiBuilder, Vec2};
 use rfd::AsyncFileDialog;
 use tracing::error;
 
 use mmm_edit::EditableInstance;
-use mmm_edit::util::ErrorChainDisplay;
+use mmm_edit::instances::{Instances, InstancesShared, Metadata};
+use mmm_edit::util::{ErrorChainDisplay, LockExt};
 
 use crate::utils::{FilePicker, PickerResult};
 use crate::{AppUi, ModManagerUi};
 
 pub struct StartUi {
     state: State,
+    instances: InstancesShared,
     picker: Option<FilePicker>,
+    text_buffer: String,
 }
 
 enum State {
@@ -39,7 +44,12 @@ enum State {
 
 impl StartUi {
     pub fn new() -> Self {
-        Self { state: State::Main, picker: None }
+        Self {
+            state: State::Main,
+            instances: Instances::get(),
+            picker: None,
+            text_buffer: String::new(),
+        }
     }
 
     pub fn enter_main_ui_if_instance_loaded(app_ui: &mut AppUi) -> bool {
@@ -94,6 +104,104 @@ impl StartUi {
                 self.picker = Some(FilePicker::new(picker));
             }
         });
+
+        ui.add_space(12.0);
+
+        let error_color = ui.visuals().error_fg_color;
+        let menu_margin = ui.spacing().menu_margin;
+        let mut instances = self.instances.lock_expect();
+        let mut instance_to_load = None;
+        let mut instance_to_remove = None;
+
+        let mut show_instance = |ui: &mut Ui, location: &Arc<Path>, metadata: Option<&Metadata>| {
+            self.text_buffer.clear();
+            let _ = write!(&mut self.text_buffer, "{}", location.display());
+
+            let response = ui
+                .scope_builder(UiBuilder::new().id_salt(location).sense(Sense::click()), |ui| {
+                    let response = ui.response();
+                    let visuals = ui.style().interact(&response);
+
+                    Frame::canvas(ui.style())
+                        .fill(visuals.bg_fill.gamma_multiply(0.3))
+                        .stroke(Stroke::new(1.0, visuals.bg_stroke.color))
+                        .inner_margin(menu_margin)
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+
+                            ui.horizontal(|ui| {
+                                ui.vertical(|ui| match metadata {
+                                    Some(Ok(m)) => {
+                                        ui.add(
+                                            Label::new(RichText::new(m.name.as_str()).strong())
+                                                .wrap()
+                                                .selectable(false),
+                                        );
+                                        ui.add(
+                                            Label::new(RichText::new(&self.text_buffer).small())
+                                                .wrap()
+                                                .selectable(false),
+                                        );
+                                    }
+                                    Some(Err(err)) => {
+                                        ui.add(Label::new(&self.text_buffer).wrap().selectable(false));
+
+                                        self.text_buffer.clear();
+                                        let _ = write!(&mut self.text_buffer, "{:#}", ErrorChainDisplay(err));
+                                        ui.add(Label::new(RichText::new(&self.text_buffer).color(error_color)).wrap());
+                                    }
+                                    None => {
+                                        ui.spinner();
+                                        ui.add(
+                                            Label::new(RichText::new(&self.text_buffer).small())
+                                                .wrap()
+                                                .selectable(false),
+                                        );
+                                    }
+                                });
+
+                                ui.add_space(ui.available_width() - 24.0);
+
+                                let response = ui.button("...");
+                                Popup::menu(&response).show(|ui| {
+                                    if ui.button("Remove from list").clicked() {
+                                        instance_to_remove = Some(Arc::clone(location));
+                                    }
+                                });
+                            });
+                        });
+                })
+                .response;
+
+            if response.clicked() {
+                instance_to_load = Some(Arc::clone(location));
+            }
+        };
+
+        match instances.iter() {
+            Ok(iter) => {
+                ScrollArea::vertical().show(ui, |ui| {
+                    for (location, metadata) in iter {
+                        show_instance(ui, location, metadata);
+                    }
+                });
+            }
+            Err(err) => {
+                self.text_buffer.clear();
+                let _ = write!(&mut self.text_buffer, "{}", err);
+                ui.add(Label::new(RichText::new(&self.text_buffer).color(error_color)).wrap());
+            }
+        }
+
+        if let Some(path) = instance_to_remove {
+            instances.remove(&path);
+        }
+
+        drop(instances);
+
+        if let Some(path) = instance_to_load {
+            self.load_instance(path.as_ref());
+        }
     }
 
     fn load_instance(&mut self, path: &Path) {
@@ -105,6 +213,7 @@ impl StartUi {
             }
         };
 
+        self.instances.lock_expect().add_or_touch(&instance);
         self.state = State::LoadInstance(instance);
     }
 }
