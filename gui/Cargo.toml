@@ -12,6 +12,9 @@ path = "src/main.rs"
 anyhow = { workspace = true }
 clap = { workspace = true }
 compact_str = { workspace = true }
+eframe = "0.36"
+egui_extras = "0.36"
+egui_ltreeview = "0.9"
 foldhash = { workspace = true }
 futures = { version = "0.3", default-features = false }
 image = { version = "0.25", default-features = false, features = ["avif", "bmp", "gif", "jpeg", "png", "webp"] }
@@ -19,9 +22,6 @@ mmm-core = { path = "../core" }
 mmm-edit = { path = "../edit" }
 nary_tree = { workspace = true }
 open = "5"
-eframe = "0.35"
-egui_extras = "0.35"
-egui_ltreeview = "0.8"
 rfd = "0.17"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

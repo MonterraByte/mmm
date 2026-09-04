@@ -14,7 +14,7 @@ dirs = { workspace = true }
 flexstr = { workspace = true }
 foldhash = { workspace = true }
 git2 = "0.21"
-icu_collator = "2.2"
+icu_collator = "2.3"
 inline_flexstr = { workspace = true }
 mmm-core = { path = "../core" }
 nary_tree = { workspace = true }
@@ -23,7 +23,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 typed-index-collections = { workspace = true }
 serde = { workspace = true, features = ["rc"] }
-sevenz-rust2 = { version = "0.21", default-features = false, features = ["bzip2", "deflate"] }
+sevenz-rust2 = { version = "0.22", default-features = false, features = ["bzip2", "deflate"] }
 smallvec = { workspace = true }
 tar = { version = "0.4", default-features = false }
 tempfile = { workspace = true }
