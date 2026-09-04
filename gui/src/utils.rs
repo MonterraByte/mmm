@@ -21,8 +21,8 @@ use std::task::{Context, Poll};
 
 use eframe::egui;
 use egui::{
-    Align, ColorImage, CornerRadius, Frame, ImageData, Label, ScrollArea, Sides, TextureHandle, TextureOptions, Ui,
-    Vec2, ViewportBuilder, ViewportId, load::SizedTexture,
+    Align, ColorImage, CornerRadius, Frame, Id, ImageData, Label, Modal, ScrollArea, Sides, TextureHandle,
+    TextureOptions, Ui, Vec2, ViewportBuilder, ViewportId, load::SizedTexture,
 };
 use futures::task::noop_waker;
 use rfd::AsyncFileDialog;
@@ -108,6 +108,36 @@ pub fn show_error_message(ui: &mut Ui, err: &str) {
             ui.add(Label::new(err).extend().halign(Align::Min));
         })
     });
+}
+
+pub fn show_error_modal(ui: &mut Ui, id: Id, err: &mut String) {
+    if err.is_empty() {
+        return;
+    }
+
+    let rect = ui.content_rect();
+    let modal = Modal::new(id).show(ui, |ui| {
+        ui.set_max_size(rect.size() * 0.8);
+
+        ScrollArea::both().show(ui, |ui| {
+            // TODO: set max width to the width of the text
+            ui.add(Label::new(err.as_str()).extend().halign(Align::Min));
+        });
+
+        Sides::new().show(
+            ui,
+            |_| (),
+            |ui| {
+                if ui.button("Close").clicked() {
+                    ui.close();
+                }
+            },
+        );
+    });
+
+    if modal.should_close() {
+        err.clear();
+    }
 }
 
 pub enum Image {

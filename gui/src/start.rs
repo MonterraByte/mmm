@@ -19,7 +19,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use eframe::{App, egui};
-use egui::{CentralPanel, Context, Frame, Label, Popup, RichText, ScrollArea, Sense, Stroke, Ui, UiBuilder, Vec2};
+use egui::{CentralPanel, Context, Frame, Id, Label, Popup, RichText, ScrollArea, Sense, Stroke, Ui, UiBuilder, Vec2};
 use rfd::AsyncFileDialog;
 use tracing::error;
 
@@ -27,7 +27,7 @@ use mmm_edit::EditableInstance;
 use mmm_edit::instances::{Instances, InstancesShared, Metadata};
 use mmm_edit::util::{ErrorChainDisplay, LockExt};
 
-use crate::utils::{FilePicker, PickerResult};
+use crate::utils::{FilePicker, PickerResult, show_error_modal};
 use crate::{AppUi, ModManagerUi};
 
 pub struct StartUi {
@@ -35,6 +35,7 @@ pub struct StartUi {
     instances: InstancesShared,
     picker: Option<FilePicker>,
     text_buffer: String,
+    error: String,
 }
 
 enum State {
@@ -49,6 +50,7 @@ impl StartUi {
             instances: Instances::get(),
             picker: None,
             text_buffer: String::new(),
+            error: String::new(),
         }
     }
 
@@ -89,6 +91,8 @@ impl App for StartUi {
             State::Main => self.main_screen(ui, frame),
             State::LoadInstance(_) => {}
         });
+
+        show_error_modal(ui, Id::new("start_error"), &mut self.error);
     }
 }
 
@@ -215,6 +219,13 @@ impl StartUi {
             Ok(instance) => instance,
             Err(err) => {
                 error!("failed to load instance: {}", ErrorChainDisplay(&err));
+                self.error.clear();
+                let _ = write!(
+                    &mut self.error,
+                    "Failed to load instance '{}':\n\t- {:#}",
+                    path.display(),
+                    ErrorChainDisplay(&err)
+                );
                 return;
             }
         };
