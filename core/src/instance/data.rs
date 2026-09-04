@@ -48,6 +48,7 @@ pub struct InstanceData {
     version: PhantomData<u32>, // Keep this at the top of the struct, so it gets (de)serialized first.
     pub mods: TiVec<ModIndex, ModDeclaration>,
     pub profiles: BTreeMap<CompactString, Profile>,
+    pub name: CompactString,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref, reason = "required by serde")]
@@ -68,6 +69,7 @@ struct UnverifiedInstanceData {
     version: PhantomData<u32>,
     mods: TiVec<ModIndex, ModDeclaration>,
     profiles: BTreeMap<CompactString, Profile>,
+    name: CompactString,
 }
 
 #[allow(clippy::unnecessary_wraps, clippy::needless_pass_by_value, reason = "required by serde")]
@@ -140,6 +142,7 @@ impl UnverifiedInstanceData {
             version: PhantomData,
             mods: self.mods,
             profiles: self.profiles,
+            name: self.name,
         })
     }
 
