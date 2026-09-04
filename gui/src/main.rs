@@ -18,6 +18,7 @@
 mod background_task;
 mod details;
 mod install;
+mod start;
 mod utils;
 mod widgets;
 
@@ -31,10 +32,10 @@ use std::sync::mpsc::{Receiver, Sender};
 
 use anyhow::Context as _;
 use clap::Parser;
-use eframe::{App, Frame, NativeOptions, egui, egui_wgpu, wgpu};
+use eframe::{App, AppCreator, Frame, NativeOptions, egui, egui_wgpu, wgpu};
 use egui::{
     Align, CentralPanel, Color32, Context, Id, Layout, Modal, Panel, Popup, ScrollArea, Sense, Sides, Stroke,
-    TextStyle, TextWrapMode, Ui, Vec2, scroll_area::DragScroll,
+    TextStyle, TextWrapMode, Ui, Vec2, ViewportCommand, scroll_area::DragScroll,
 };
 use egui_extras::{Column, TableBuilder};
 use egui_wgpu::{WgpuSetup, WgpuSetupCreateNew};
@@ -50,25 +51,32 @@ use mmm_edit::util::{ErrorChainDisplay, LockExt};
 use crate::background_task::{BackgroundTask, Finalizer, StatusString, spawn_background_thread};
 use crate::details::ModDetailsWindow;
 use crate::install::OngoingModInstallation;
+use crate::start::StartUi;
 
 const APP_NAME: &str = "zone.monterra.modmanager";
 
 #[derive(Parser)]
 struct Args {
-    instance_path: PathBuf,
+    instance_path: Option<PathBuf>,
 }
 
 fn main() -> anyhow::Result<()> {
     tracing_setup();
-    let instance = {
-        let args = Args::parse();
-        EditableInstance::open(&args.instance_path).context("failed to open instance")?
+    let (app, title, size) = if let Some(path) = Args::parse().instance_path {
+        let instance = EditableInstance::open(&path).context("failed to open instance")?;
+        let title = format!("mmm — {}", instance.dir().display());
+        let app: AppCreator = Box::new(|_| Ok(AppUi::mod_manager(instance)));
+        (app, title, ModManagerUi::INITIAL_SIZE)
+    } else {
+        let title = "mmm".to_owned();
+        let app: AppCreator = Box::new(|_| Ok(AppUi::start()));
+        (app, title, StartUi::INITIAL_SIZE)
     };
 
-    let options = native_options(&instance);
+    let options = native_options(title, size);
 
     // https://github.com/emilk/egui/issues/5815
-    if let Err(err) = eframe::run_native(APP_NAME, options, Box::new(|_ctx| Ok(ModManagerUi::new(instance)))) {
+    if let Err(err) = eframe::run_native(APP_NAME, options, app) {
         error!("failed to create graphics context: {}", ErrorChainDisplay(&err));
         std::process::exit(1);
     }
@@ -76,11 +84,11 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn native_options(instance: &EditableInstance) -> NativeOptions {
+fn native_options(title: String, size: Vec2) -> NativeOptions {
     let mut options = NativeOptions::default();
     options.viewport.app_id = Some(APP_NAME.into()); // https://github.com/emilk/egui/issues/7872
-    options.viewport.title = Some(format!("mmm — {}", instance.dir().display()));
-    options.viewport.inner_size = Some(ModManagerUi::INITIAL_SIZE);
+    options.viewport.title = Some(title);
+    options.viewport.inner_size = Some(size);
     options.viewport.clamp_size_to_monitor_size = Some(true);
 
     // egui defaults to `AutoVsync` (https://github.com/emilk/egui/blob/0.34.3/crates/egui-wgpu/src/lib.rs#L335)
@@ -116,6 +124,52 @@ fn native_options(instance: &EditableInstance) -> NativeOptions {
     options
 }
 
+#[expect(clippy::large_enum_variant, reason = "the ModManager state is the important one")]
+pub enum AppUi {
+    Start(StartUi),
+    ModManager(ModManagerUi),
+}
+
+impl AppUi {
+    #[must_use]
+    pub fn mod_manager(instance: EditableInstance) -> Box<Self> {
+        Box::new(Self::ModManager(ModManagerUi::new(instance)))
+    }
+
+    #[must_use]
+    pub fn start() -> Box<Self> {
+        Box::new(Self::Start(StartUi::new()))
+    }
+}
+
+impl App for AppUi {
+    fn logic(&mut self, ctx: &Context, frame: &mut Frame) {
+        match self {
+            AppUi::Start(s) => s.logic(ctx, frame),
+            AppUi::ModManager(m) => m.logic(ctx, frame),
+        }
+
+        if matches!(self, AppUi::Start(_)) && StartUi::enter_main_ui_if_instance_loaded(self) {
+            std::hint::cold_path();
+
+            let AppUi::ModManager(mm) = &self else { unreachable!() };
+            ctx.send_viewport_cmd(ViewportCommand::Title(format!("mmm — {}", mm.instance.dir().display())));
+
+            ctx.send_viewport_cmd(ViewportCommand::InnerSize(ModManagerUi::INITIAL_SIZE));
+            if let Some(cmd) = ViewportCommand::center_on_screen(ctx) {
+                ctx.send_viewport_cmd(cmd);
+            }
+        }
+    }
+
+    fn ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
+        match self {
+            AppUi::Start(s) => s.ui(ui, frame),
+            AppUi::ModManager(m) => m.ui(ui, frame),
+        }
+    }
+}
+
 pub struct ModManagerUi {
     instance: EditableInstance,
     background_task_queue: Sender<BackgroundTask>,
@@ -131,11 +185,11 @@ pub struct ModManagerUi {
 }
 
 impl ModManagerUi {
-    fn new(instance: EditableInstance) -> Box<Self> {
+    fn new(instance: EditableInstance) -> Self {
         let (background_task_queue, background_task_finalizer_queue, background_task_status) =
             spawn_background_thread().expect("failed to spawn background task thread");
 
-        Box::new(Self {
+        Self {
             instance,
             background_task_queue,
             background_task_finalizer_queue,
@@ -147,7 +201,7 @@ impl ModManagerUi {
             rename_mod_modal: RenameModModal::default(),
             remove_selected_mods_modal: RemoveSelectedModsModal::default(),
             ongoing_mod_installs: Vec::new(),
-        })
+        }
     }
 }
 
