@@ -18,9 +18,13 @@
 pub mod archive;
 pub mod install;
 mod instance;
+pub mod instances;
 mod r#mod;
 pub mod util;
 mod writer;
 
 pub use instance::{EditableInstance, InstanceOpenError};
 pub use r#mod::{Mod, ModInitError};
+
+/// Identifier used for storing mmm-related data.
+pub const APP_NAME: &str = "zone.monterra.modmanager";

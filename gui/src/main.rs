@@ -45,15 +45,13 @@ use tracing_subscriber::EnvFilter;
 use wgpu::{PowerPreference, PresentMode};
 
 use mmm_core::instance::{Instance, ModDeclaration, ModEntryKind, ModIndex, ModOrderIndex};
-use mmm_edit::EditableInstance;
 use mmm_edit::util::{ErrorChainDisplay, LockExt};
+use mmm_edit::{APP_NAME, EditableInstance};
 
 use crate::background_task::{BackgroundTask, Finalizer, StatusString, spawn_background_thread};
 use crate::details::ModDetailsWindow;
 use crate::install::OngoingModInstallation;
 use crate::start::StartUi;
-
-const APP_NAME: &str = "zone.monterra.modmanager";
 
 #[derive(Parser)]
 struct Args {

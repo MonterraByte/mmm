@@ -26,7 +26,7 @@ use tracing::{error, trace};
 use typed_index_collections::{TiSlice, TiVec};
 use unicode_segmentation::UnicodeSegmentation;
 
-use mmm_core::instance::data::{INSTANCE_DATA_FILE, InstanceData, InstanceDataOpenError};
+use mmm_core::instance::data::{INSTANCE_DATA_FILE, InstanceData, InstanceDataOpenError, InstanceMetadata};
 use mmm_core::instance::{
     DEFAULT_PROFILE, DEFAULT_PROFILE_NAME, Instance, InvalidModNameError, ModDeclaration, ModEntryKind, ModIndex,
     ModOrderEntry, ModOrderIndex, Profile,
@@ -343,6 +343,10 @@ impl EditableInstance {
             to.into(),
         )
         .into()
+    }
+
+    pub(crate) fn metadata(&self) -> InstanceMetadata {
+        self.data.metadata()
     }
 }
 
