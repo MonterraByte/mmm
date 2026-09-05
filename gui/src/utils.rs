@@ -14,9 +14,10 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use std::cell::Cell;
-use std::path::PathBuf;
+use std::fmt;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::task::{Context, Poll};
 
 use eframe::egui;
@@ -218,4 +219,21 @@ pub enum PickerResult {
     Pending,
     Ready(PathBuf),
     Closed,
+}
+
+pub static USER_HOME: LazyLock<Option<Box<Path>>> =
+    LazyLock::new(|| std::env::home_dir().map(PathBuf::into_boxed_path));
+
+pub struct PathDisplay<'a>(pub &'a Path);
+
+impl fmt::Display for PathDisplay<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(home) = (*USER_HOME).as_deref()
+            && self.0.starts_with(home)
+        {
+            write!(f, "~/{}", self.0.trim_prefix(home).display())
+        } else {
+            write!(f, "{}", self.0.display())
+        }
+    }
 }

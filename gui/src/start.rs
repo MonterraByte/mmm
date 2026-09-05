@@ -27,7 +27,7 @@ use mmm_edit::EditableInstance;
 use mmm_edit::instances::{Instances, InstancesShared, Metadata};
 use mmm_edit::util::{ErrorChainDisplay, LockExt};
 
-use crate::utils::{FilePicker, PickerResult, show_error_modal};
+use crate::utils::{FilePicker, PathDisplay, PickerResult, show_error_modal};
 use crate::{AppUi, ModManagerUi};
 
 pub struct StartUi {
@@ -119,7 +119,7 @@ impl StartUi {
 
         let mut show_instance = |ui: &mut Ui, location: &Arc<Path>, metadata: Option<&Metadata>| {
             self.text_buffer.clear();
-            let _ = write!(&mut self.text_buffer, "{}", location.display());
+            let _ = write!(&mut self.text_buffer, "{}", PathDisplay(location));
 
             let response = ui
                 .scope_builder(UiBuilder::new().id_salt(location).sense(Sense::click()), |ui| {
