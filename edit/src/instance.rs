@@ -26,6 +26,7 @@ use tracing::{error, trace};
 use typed_index_collections::{TiSlice, TiVec};
 use unicode_segmentation::UnicodeSegmentation;
 
+use mmm_core::game::Game;
 use mmm_core::instance::data::{INSTANCE_DATA_FILE, InstanceData, InstanceDataOpenError, InstanceMetadata};
 use mmm_core::instance::{
     DEFAULT_PROFILE, DEFAULT_PROFILE_NAME, Instance, InvalidModNameError, ModDeclaration, ModEntryKind, ModIndex,
@@ -51,6 +52,20 @@ pub struct EditableInstance {
 }
 
 impl EditableInstance {
+    /// Creates a new instance at the specified location.
+    pub fn new(dir: &Path, name: CompactString, game: Game) -> Result<Self, InstanceCreateError> {
+        let data = InstanceData::new(name, game);
+
+        fs::create_dir_all(dir).map_err(InstanceCreateError::Mkdir)?;
+
+        let mut file =
+            File::create_new(dir.join(INSTANCE_DATA_FILE)).map_err(InstanceCreateError::CreateInstanceData)?;
+        cbor4ii::serde::to_writer(&mut file, &data)?;
+        drop(file);
+
+        Self::open(dir).map_err(Into::into)
+    }
+
     /// Opens the instance at the specified path.
     #[allow(clippy::assigning_clones, reason = "compact_str clones don't share resources")]
     pub fn open(dir: &Path) -> Result<Self, InstanceOpenError> {
@@ -129,6 +144,19 @@ impl EditableInstance {
             error!("write thread crashed");
         }
     }
+}
+
+/// Error type returned by [`EditableInstance::new`].
+#[derive(Debug, Error)]
+pub enum InstanceCreateError {
+    #[error("failed to create instance directory")]
+    Mkdir(#[source] io::Error),
+    #[error("failed to create instance data file")]
+    CreateInstanceData(#[source] io::Error),
+    #[error("failed to write instance data file")]
+    WriteInstanceData(#[from] cbor4ii::serde::EncodeError<io::Error>),
+    #[error("failed to open instance after creating it")]
+    Open(#[from] InstanceOpenError),
 }
 
 /// Error type returned by [`EditableInstance::open`].

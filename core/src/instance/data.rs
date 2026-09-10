@@ -59,6 +59,18 @@ fn serialize_version<S: Serializer>(_: &PhantomData<u32>, serializer: S) -> Resu
 }
 
 impl InstanceData {
+    /// Creates a new empty `InstanceData` with the specified values.
+    #[must_use]
+    pub fn new(name: CompactString, game: Game) -> Self {
+        Self {
+            version: PhantomData,
+            mods: TiVec::new(),
+            profiles: BTreeMap::new(),
+            game,
+            name,
+        }
+    }
+
     /// Deserializes `InstanceData` from the file at the provided path.
     pub fn from_file(path: &Path) -> Result<Self, InstanceDataOpenError> {
         UnverifiedInstanceData::from_file(path)?.verify().map_err(Into::into)
