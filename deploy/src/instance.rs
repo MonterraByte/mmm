@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 use typed_index_collections::{TiSlice, TiVec};
 
+use mmm_core::game::Game;
 use mmm_core::instance::data::{INSTANCE_DATA_FILE, InstanceData, InstanceDataOpenError};
 use mmm_core::instance::{
     DEFAULT_PROFILE_NAME, Instance, ModDeclaration, ModIndex, ModOrderEntry, ModOrderIndex, Profile,
@@ -29,6 +30,7 @@ pub struct DeployInstance {
     dir: PathBuf,
     mods: TiVec<ModIndex, ModDeclaration>,
     profile: Profile,
+    game: Game,
 }
 
 impl DeployInstance {
@@ -59,13 +61,17 @@ impl DeployInstance {
             return Err(DeployInstanceOpenError::NoProfiles);
         };
 
-        Ok(Self { dir, mods: data.mods, profile })
+        Ok(Self { dir, mods: data.mods, profile, game: data.game })
     }
 }
 
 impl Instance for DeployInstance {
     fn dir(&self) -> &Path {
         &self.dir
+    }
+
+    fn game_dir(&self) -> &Path {
+        self.game.path()
     }
 
     fn mods(&self) -> &TiSlice<ModIndex, ModDeclaration> {

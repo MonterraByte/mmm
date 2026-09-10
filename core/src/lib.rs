@@ -17,5 +17,6 @@
 #![feature(os_string_truncate)]
 
 pub mod file_tree;
+pub mod game;
 pub mod instance;
 pub mod util;

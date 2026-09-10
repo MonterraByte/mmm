@@ -38,6 +38,7 @@ pub struct StartUi {
     error: String,
 }
 
+#[allow(clippy::large_enum_variant, reason = "State will eventually be LoadInstance")]
 enum State {
     Main,
     LoadInstance(EditableInstance),

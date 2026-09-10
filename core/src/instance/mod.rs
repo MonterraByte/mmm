@@ -33,6 +33,9 @@ pub trait Instance {
     /// Returns the absolute path to the instance's base directory.
     fn dir(&self) -> &Path;
 
+    /// Returns the absolute path to the game directory.
+    fn game_dir(&self) -> &Path;
+
     /// Returns the [`ModDeclaration`]s contained in the instance.
     fn mods(&self) -> &TiSlice<ModIndex, ModDeclaration>;
 

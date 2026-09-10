@@ -30,6 +30,7 @@ use signal_hook::consts::SIGINT;
 
 use mmm_core::file_tree::display::{FileTreeDisplayKind, ModVecFileTreeDisplay};
 use mmm_core::file_tree::{FileTreeBuilder, new_tree};
+use mmm_core::instance::Instance;
 
 use crate::instance::DeployInstance;
 use crate::mount::{MountMethod, MountMethodChoice, OverlayMount};
@@ -40,7 +41,7 @@ struct Args {
     #[arg(value_enum, short, long, required = false, default_value_t)]
     mount_method: MountMethodChoice,
     instance_path: PathBuf,
-    game_path: PathBuf,
+    game_path: Option<PathBuf>,
     #[arg(short = 'x', long)]
     exec: Option<PathBuf>,
     #[arg(short, long)]
@@ -75,10 +76,10 @@ fn main() -> anyhow::Result<()> {
     let staging_dir = build_staging_tree(&tree, &mods).context("failed to stage mod files")?;
     println!("Built staging tree at '{}'", staging_dir.path().display());
 
-    let game_path = args
-        .game_path
+    let game_path = args.game_path.as_deref().unwrap_or(mods.game_dir());
+    let game_path = game_path
         .canonicalize()
-        .with_context(|| format!("failed to canonicalize game path '{}'", args.game_path.display()))?;
+        .with_context(|| format!("failed to canonicalize game path '{}'", game_path.display()))?;
     let overlay_mount = OverlayMount::new(staging_dir.path(), &game_path).with_context(|| {
         format!(
             "failed to mount overlay '{}' at game path '{}'",
@@ -90,7 +91,7 @@ fn main() -> anyhow::Result<()> {
 
     if let Some(mut exe) = args.exec {
         if exe.is_relative() {
-            exe = args.game_path.join(exe);
+            exe = game_path.join(exe);
         }
         run_game_and_wait(&exe).context("failed to run game and wait for it to quit")?;
     } else {

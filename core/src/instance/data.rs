@@ -31,6 +31,7 @@ use thiserror::Error;
 use typed_index_collections::TiVec;
 
 use super::{ModDeclaration, ModIndex, Profile};
+use crate::game::Game;
 
 /// File name of the instance data file in the instance's root directory.
 pub const INSTANCE_DATA_FILE: &str = "mmm.cbor";
@@ -48,6 +49,7 @@ pub struct InstanceData {
     version: PhantomData<u32>, // Keep this at the top of the struct, so it gets (de)serialized first.
     pub mods: TiVec<ModIndex, ModDeclaration>,
     pub profiles: BTreeMap<CompactString, Profile>,
+    pub game: Game,
     pub name: CompactString,
 }
 
@@ -64,7 +66,11 @@ impl InstanceData {
 
     #[must_use]
     pub fn metadata(&self) -> InstanceMetadata {
-        InstanceMetadata { version: PhantomData, name: self.name.clone() }
+        InstanceMetadata {
+            version: PhantomData,
+            game: self.game.clone(),
+            name: self.name.clone(),
+        }
     }
 }
 
@@ -74,6 +80,7 @@ struct UnverifiedInstanceData {
     version: PhantomData<u32>,
     mods: TiVec<ModIndex, ModDeclaration>,
     profiles: BTreeMap<CompactString, Profile>,
+    game: Game,
     name: CompactString,
 }
 
@@ -154,6 +161,7 @@ impl UnverifiedInstanceData {
             version: PhantomData,
             mods: self.mods,
             profiles: self.profiles,
+            game: self.game,
             name: self.name,
         })
     }
@@ -177,6 +185,7 @@ impl UnverifiedInstanceData {
 pub struct InstanceMetadata {
     #[serde(deserialize_with = "deserialize_version")]
     version: PhantomData<u32>,
+    pub game: Game,
     pub name: CompactString,
 }
 

@@ -155,6 +155,10 @@ impl Instance for EditableInstance {
         &self.dir
     }
 
+    fn game_dir(&self) -> &Path {
+        self.data.game.path()
+    }
+
     fn mods(&self) -> &TiSlice<ModIndex, ModDeclaration> {
         &self.data.mods
     }
