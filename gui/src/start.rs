@@ -14,20 +14,28 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use std::fmt::Write;
+use std::fs;
+use std::io;
 use std::mem;
 use std::path::Path;
 use std::sync::Arc;
+use std::thread::{self, JoinHandle};
 
 use eframe::{App, egui};
-use egui::{CentralPanel, Context, Frame, Id, Label, Popup, RichText, ScrollArea, Sense, Stroke, Ui, UiBuilder, Vec2};
+use egui::{
+    CentralPanel, ComboBox, Context, Frame, Id, Label, Margin, Popup, RichText, ScrollArea, Sense, Stroke, Ui,
+    UiBuilder, Vec2,
+};
 use rfd::AsyncFileDialog;
 use tracing::error;
 
 use mmm_edit::EditableInstance;
+use mmm_edit::game_providers::{InstalledSteamGame, Steam};
 use mmm_edit::instances::{Instances, InstancesShared, Metadata};
 use mmm_edit::util::{ErrorChainDisplay, LockExt};
 
-use crate::utils::{FilePicker, PathDisplay, PickerResult, show_error_modal};
+use crate::utils::{FilePicker, FrameWithButtons, Navigate, PathDisplay, PickerResult, show_error_modal};
+use crate::widgets::path_input::{PathChanged, PathInput};
 use crate::{AppUi, ModManagerUi};
 
 pub struct StartUi {
@@ -36,12 +44,24 @@ pub struct StartUi {
     picker: Option<FilePicker>,
     text_buffer: String,
     error: String,
+    steam: SteamThread,
 }
 
 #[allow(clippy::large_enum_variant, reason = "State will eventually be LoadInstance")]
 enum State {
     Main,
+    PickGame {
+        game_path: PathInput,
+        source: GameSource,
+        can_go_forward: Option<bool>,
+    },
     LoadInstance(EditableInstance),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum GameSource {
+    None,
+    Steam(Option<usize>), // index of the game in `Steam::games`
 }
 
 impl StartUi {
@@ -50,6 +70,7 @@ impl StartUi {
             state: State::Main,
             instances: Instances::get(),
             picker: None,
+            steam: SteamThread::None,
             text_buffer: String::new(),
             error: String::new(),
         }
@@ -90,6 +111,7 @@ impl App for StartUi {
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         CentralPanel::default().show(ui, |ui| match self.state {
             State::Main => self.main_screen(ui, frame),
+            State::PickGame { .. } => self.pick_game(ui, frame),
             State::LoadInstance(_) => {}
         });
 
@@ -102,6 +124,13 @@ impl StartUi {
 
     fn main_screen(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         ui.horizontal(|ui| {
+            if ui.button("New instance").clicked() {
+                self.state = State::PickGame {
+                    game_path: PathInput::new(),
+                    source: GameSource::Steam(None),
+                    can_go_forward: Some(false),
+                };
+            }
             if ui.button("Open instance").clicked() {
                 let picker = AsyncFileDialog::new()
                     .set_parent(frame)
@@ -215,6 +244,118 @@ impl StartUi {
         }
     }
 
+    fn pick_game(&mut self, ui: &mut Ui, frame: &eframe::Frame) {
+        let State::PickGame { game_path, can_go_forward, source } = &mut self.state else {
+            unreachable!();
+        };
+
+        let steam = self.steam.get();
+
+        let nav = FrameWithButtons::new(ui)
+            .with_frame(|frame| frame.inner_margin(Margin::same(8)))
+            .show_navigable(ui, |ui| {
+                ui.heading("Select game");
+
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Source:");
+
+                    let enable_steam = steam.is_none_or(Steam::found);
+                    if !enable_steam && matches!(source, GameSource::Steam(_)) {
+                        *source = GameSource::None;
+                    }
+                    ui.add_enabled_ui(enable_steam, |ui| {
+                        ui.radio_value(
+                            source,
+                            if matches!(source, GameSource::Steam(_)) {
+                                *source
+                            } else {
+                                GameSource::Steam(None)
+                            },
+                            "Steam",
+                        )
+                    });
+
+                    ui.radio_value(source, GameSource::None, "Local");
+                });
+
+                match source {
+                    GameSource::None => {
+                        ui.horizontal(|ui| {
+                            ui.label("Game directory:");
+                            if game_path.ui(ui, frame) == PathChanged::Yes {
+                                *can_go_forward = None;
+                            }
+                        });
+                    }
+                    GameSource::Steam(game_idx) => {
+                        if let Some(steam) = steam {
+                            let mut set_game = |game: InstalledSteamGame| {
+                                game_path.clear_and_insert(|path| game.push_path(path));
+                                *can_go_forward = None;
+                            };
+
+                            let game_idx = game_idx.get_or_insert_with(|| {
+                                let game = steam.games().next().expect("there is at least one game");
+                                set_game(game);
+                                0
+                            });
+
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label("Game:");
+                                ComboBox::from_id_salt("steam_game")
+                                    .selected_text(steam.game(*game_idx).name.as_str())
+                                    .show_ui(ui, |ui| {
+                                        for (idx, game) in steam.games().enumerate() {
+                                            let response =
+                                                ui.selectable_value(game_idx, idx, game.data().name.as_str());
+                                            if response.changed() {
+                                                set_game(game);
+                                            }
+                                        }
+                                    });
+                            });
+                            ui.label(game_path.as_str());
+                        } else {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.spinner();
+                                ui.label("Finding installed games");
+                            });
+                        }
+                    }
+                }
+
+                *can_go_forward.get_or_insert_with(|| {
+                    if let GameSource::Steam(idx) = source
+                        && idx.is_none()
+                    {
+                        return false;
+                    }
+
+                    let path = game_path.value();
+                    if path.is_empty() || path.is_relative() || path.file_name().is_none() {
+                        return false;
+                    }
+
+                    match fs::metadata(path) {
+                        Ok(meta) => meta.is_dir(),
+                        Err(err) if err.kind() == io::ErrorKind::NotFound => false,
+                        Err(err) => {
+                            error!("failed to get metadata of '{}': {}", game_path, err);
+                            false
+                        }
+                    }
+                })
+            });
+
+        match nav {
+            Some(Navigate::Back) => self.state = State::Main,
+            Some(Navigate::Forward) => {
+                todo!();
+            }
+            None => {}
+        }
+    }
+
     fn load_instance(&mut self, path: &Path) {
         let instance = match EditableInstance::open(path) {
             Ok(instance) => instance,
@@ -233,5 +374,38 @@ impl StartUi {
 
         self.instances.lock_expect().add_or_touch(&instance);
         self.state = State::LoadInstance(instance);
+    }
+}
+
+enum SteamThread {
+    None,
+    Pending(Option<JoinHandle<Steam>>),
+    Some(Steam),
+    Err,
+}
+
+impl SteamThread {
+    pub fn get(&mut self) -> Option<&Steam> {
+        match self {
+            SteamThread::None => {
+                *self = Self::Pending(Some(thread::spawn(Steam::get)));
+                None
+            }
+            SteamThread::Pending(handle) => {
+                if handle.as_ref().expect("not joined yet").is_finished() {
+                    let handle = handle.take().expect("not joined yet");
+                    if let Ok(steam) = handle.join() {
+                        *self = Self::Some(steam);
+                        return self.get();
+                    }
+
+                    *self = Self::Err;
+                    error!("Steam thread panicked");
+                }
+                None
+            }
+            SteamThread::Some(steam) => Some(steam),
+            SteamThread::Err => None,
+        }
     }
 }
