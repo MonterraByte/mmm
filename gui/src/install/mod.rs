@@ -53,7 +53,7 @@ use crate::ModManagerUi;
 use crate::background_task::{BackgroundTask, Finalizer, StatusString};
 use crate::install::fomod::FomodDialog;
 use crate::utils::{
-    FilePicker, Image, PickerResult, Viewport, ViewportResult, show_error_message, show_frame_with_buttons,
+    FilePicker, FrameWithButtons, Image, PickerResult, Viewport, ViewportResult, show_error_message,
     show_immediate_panel,
 };
 use crate::widgets::tree::{TreeDisplay, dnd_handle_actions_fn};
@@ -290,7 +290,7 @@ impl OngoingModInstallation {
             State::Error(err) => {
                 let viewport = self.viewport.as_ref().expect("viewport has been created").as_ref();
                 show_immediate_panel!(viewport, ui, |ui| {
-                    show_frame_with_buttons(
+                    FrameWithButtons::new(ui).show(
                         ui,
                         |ui| show_error_message(ui, err),
                         |_| (),

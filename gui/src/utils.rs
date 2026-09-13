@@ -13,6 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+#![expect(unused)]
+
 use std::cell::Cell;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -22,7 +24,7 @@ use std::task::{Context, Poll};
 
 use eframe::egui;
 use egui::{
-    Align, ColorImage, CornerRadius, Frame, Id, ImageData, Label, Modal, ScrollArea, Sides, TextureHandle,
+    Align, Button, ColorImage, CornerRadius, Frame, Id, ImageData, Label, Modal, ScrollArea, Sides, TextureHandle,
     TextureOptions, Ui, Vec2, ViewportBuilder, ViewportId, load::SizedTexture,
 };
 use futures::task::noop_waker;
@@ -86,21 +88,69 @@ impl From<ViewportResult> for bool {
     }
 }
 
-pub fn show_frame_with_buttons(
-    ui: &mut Ui,
-    add_frame_contents: impl FnOnce(&mut Ui),
-    add_left_buttons: impl FnOnce(&mut Ui),
-    add_right_buttons: impl FnOnce(&mut Ui),
-) {
-    Frame::new()
-        .stroke(ui.style().visuals.window_stroke)
-        .corner_radius(CornerRadius::same(4))
-        .show(ui, |ui| {
+pub struct FrameWithButtons {
+    frame: Frame,
+}
+
+impl FrameWithButtons {
+    pub fn new(ui: &Ui) -> Self {
+        let frame = Frame::new()
+            .stroke(ui.style().visuals.window_stroke)
+            .corner_radius(CornerRadius::same(4));
+        Self { frame }
+    }
+
+    pub fn with_frame(&mut self, f: impl Fn(Frame) -> Frame) -> &mut Self {
+        self.frame = f(self.frame);
+        self
+    }
+
+    pub fn show(
+        &self,
+        ui: &mut Ui,
+        add_frame_contents: impl FnOnce(&mut Ui),
+        add_left_buttons: impl FnOnce(&mut Ui),
+        add_right_buttons: impl FnOnce(&mut Ui),
+    ) {
+        self.frame.show(ui, |ui| {
             ui.set_max_height(ui.available_height() - ui.style().spacing.interact_size.y);
             add_frame_contents(ui);
         });
 
-    Sides::new().show(ui, add_left_buttons, add_right_buttons);
+        Sides::new().show(ui, add_left_buttons, add_right_buttons);
+    }
+
+    pub fn show_navigable(&self, ui: &mut Ui, add_frame_contents: impl FnOnce(&mut Ui) -> bool) -> Option<Navigate> {
+        let can_go_forward = self
+            .frame
+            .show(ui, |ui| {
+                ui.set_max_height(ui.available_height() - ui.style().spacing.interact_size.y);
+                ui.take_available_space();
+                add_frame_contents(ui)
+            })
+            .inner;
+
+        let add_buttons = |ui: &mut Ui| {
+            let response = ui.add_enabled(can_go_forward, Button::new("Next"));
+            if response.clicked() {
+                return Some(Navigate::Forward);
+            }
+
+            if ui.button("Back").clicked() {
+                return Some(Navigate::Back);
+            }
+
+            None
+        };
+
+        Sides::new().show(ui, |_| (), add_buttons).1
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Navigate {
+    Back,
+    Forward,
 }
 
 pub fn show_error_message(ui: &mut Ui, err: &str) {
