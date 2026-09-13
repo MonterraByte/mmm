@@ -29,13 +29,14 @@ use egui::{
 use rfd::AsyncFileDialog;
 use tracing::error;
 
+use mmm_core::game::{Game, Provider};
 use mmm_edit::EditableInstance;
 use mmm_edit::game_providers::{InstalledSteamGame, Steam};
-use mmm_edit::instances::{Instances, InstancesShared, Metadata};
+use mmm_edit::instances::{Instances, InstancesShared, Metadata, default_instances_dir};
 use mmm_edit::util::{ErrorChainDisplay, LockExt};
 
 use crate::utils::{FilePicker, FrameWithButtons, Navigate, PathDisplay, PickerResult, show_error_modal};
-use crate::widgets::path_input::{PathChanged, PathInput};
+use crate::widgets::path_input::{AutoPathInput, PathChanged, PathInput};
 use crate::{AppUi, ModManagerUi};
 
 pub struct StartUi {
@@ -53,6 +54,14 @@ enum State {
     PickGame {
         game_path: PathInput,
         source: GameSource,
+        can_go_forward: Option<bool>,
+    },
+    PickInstanceLocation {
+        game_path: PathInput,
+        source: GameSource,
+        name: String,
+        path: AutoPathInput,
+        path_message: String,
         can_go_forward: Option<bool>,
     },
     LoadInstance(EditableInstance),
@@ -112,6 +121,7 @@ impl App for StartUi {
         CentralPanel::default().show(ui, |ui| match self.state {
             State::Main => self.main_screen(ui, frame),
             State::PickGame { .. } => self.pick_game(ui, frame),
+            State::PickInstanceLocation { .. } => self.pick_instance_location(ui, frame),
             State::LoadInstance(_) => {}
         });
 
@@ -350,7 +360,141 @@ impl StartUi {
         match nav {
             Some(Navigate::Back) => self.state = State::Main,
             Some(Navigate::Forward) => {
-                todo!();
+                let State::PickGame { game_path, source, .. } = mem::replace(&mut self.state, State::Main) else {
+                    unreachable!()
+                };
+
+                let name = match source {
+                    GameSource::None => game_path
+                        .value()
+                        .file_name()
+                        .expect("'Next' button is only enabled if path.file_name() is Some")
+                        .to_string_lossy()
+                        .into_owned(),
+                    GameSource::Steam(game_idx) => steam
+                        .expect("Steam is selected")
+                        .game(game_idx.expect("'Next' button is only enabled if game_idx is Some"))
+                        .name
+                        .as_str()
+                        .to_owned(),
+                };
+
+                let path = AutoPathInput::new(default_instances_dir(), &name);
+
+                self.state = State::PickInstanceLocation {
+                    name,
+                    path,
+                    game_path,
+                    source,
+                    path_message: String::new(),
+                    can_go_forward: None,
+                };
+            }
+            None => {}
+        }
+    }
+
+    fn pick_instance_location(&mut self, ui: &mut Ui, frame: &eframe::Frame) {
+        let State::PickInstanceLocation { name, path, path_message, can_go_forward, .. } = &mut self.state else {
+            unreachable!();
+        };
+
+        let nav = FrameWithButtons::new(ui)
+            .with_frame(|frame| frame.inner_margin(Margin::same(8)))
+            .show_navigable(ui, |ui| {
+                ui.heading("Select name and location");
+
+                ui.horizontal(|ui| {
+                    ui.label("Name:");
+                    let response = ui.text_edit_singleline(name);
+                    if response.changed() {
+                        path.update(name);
+                        *can_go_forward = None;
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Path:");
+                    if path.ui(ui, frame) == PathChanged::Yes {
+                        *can_go_forward = None;
+                    }
+                });
+
+                let can_go_forward = *can_go_forward.get_or_insert_with(|| {
+                    let path = path.value();
+
+                    path_message.clear();
+                    match fs::read_dir(path) {
+                        Ok(mut iter) => {
+                            if iter.next().is_some() {
+                                path_message.push_str("The specified directory already contains files.");
+                            }
+                        }
+                        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+                        Err(err) if err.kind() == io::ErrorKind::NotADirectory => {
+                            path_message.push_str("The specified path points to a file.");
+                            return false;
+                        }
+                        Err(err) => {
+                            error!("failed to read contents of directory '{}': {}", path.display(), err);
+                            let _ = write!(path_message, "failed to read contents of directory: {}", err);
+                        }
+                    }
+
+                    !name.is_empty() && !path.is_empty() && path.is_absolute()
+                });
+
+                if !path_message.is_empty() {
+                    ui.label(path_message.as_str());
+                }
+
+                can_go_forward
+            });
+
+        match nav {
+            Some(Navigate::Back) => {
+                let State::PickInstanceLocation { game_path, source, .. } = mem::replace(&mut self.state, State::Main)
+                else {
+                    unreachable!()
+                };
+
+                self.state = State::PickGame { game_path, source, can_go_forward: None }
+            }
+            Some(Navigate::Forward) => {
+                let State::PickInstanceLocation { game_path, source, path, name, .. } =
+                    mem::replace(&mut self.state, State::Main)
+                else {
+                    unreachable!()
+                };
+
+                let provider = match source {
+                    GameSource::None => None,
+                    GameSource::Steam(game_idx) => Some(Provider::Steam(
+                        self.steam
+                            .get()
+                            .expect("Steam is selected")
+                            .game(game_idx.expect("we can only proceed to the current screen if game_idx is Some"))
+                            .to_owned(),
+                    )),
+                };
+                let game = Game::new(game_path.into_path(), provider)
+                    .expect("'Next' button is only enabled if the path is absolute");
+
+                match EditableInstance::new(path.value(), name.into(), game) {
+                    Ok(instance) => {
+                        self.instances.lock_expect().add_or_touch(&instance);
+                        self.state = State::LoadInstance(instance);
+                    }
+                    Err(err) => {
+                        error!("failed to create instance: {}", ErrorChainDisplay(&err));
+                        self.error.clear();
+                        let _ = write!(
+                            &mut self.error,
+                            "Failed to create instance:\n\t- {:#}",
+                            ErrorChainDisplay(&err)
+                        );
+                    }
+                }
             }
             None => {}
         }
