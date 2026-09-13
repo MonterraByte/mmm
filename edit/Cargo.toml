@@ -25,6 +25,7 @@ typed-index-collections = { workspace = true }
 serde = { workspace = true, features = ["rc"] }
 sevenz-rust2 = { version = "0.22", default-features = false, features = ["bzip2", "deflate"] }
 smallvec = { workspace = true }
+steamlocate = "2.1.1"
 tar = { version = "0.4", default-features = false }
 tempfile = { workspace = true }
 unicode-segmentation = "1.13"

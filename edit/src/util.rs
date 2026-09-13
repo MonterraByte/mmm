@@ -57,6 +57,11 @@ pub fn node_ord<F>(left: &TreeNode<F>, right: &TreeNode<F>) -> Ordering {
     }
 }
 
+/// Sorts the two specified strings.
+pub fn str_ord(left: &str, right: &str) -> Ordering {
+    COLLATOR.compare(left, right)
+}
+
 static CASE_INSENSITIVE_COLLATOR: LazyLock<CollatorBorrowed<'static>> = LazyLock::new(|| {
     let mut prefs = CollatorPreferences::default();
     prefs.case_first = Some(CollationCaseFirst::False);

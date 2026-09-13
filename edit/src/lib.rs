@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 
 pub mod archive;
+pub mod game_providers;
 pub mod install;
 mod instance;
 pub mod instances;
