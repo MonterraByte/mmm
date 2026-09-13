@@ -202,6 +202,11 @@ impl FilePicker {
         Self(Box::pin(picker))
     }
 
+    pub fn new_directory(file_dialog: AsyncFileDialog) -> Self {
+        let picker = file_dialog.pick_folder();
+        Self(Box::pin(picker))
+    }
+
     pub fn poll(&mut self) -> PickerResult {
         match self.0.as_mut().poll(&mut Context::from_waker(&noop_waker())) {
             Poll::Pending => PickerResult::Pending,
