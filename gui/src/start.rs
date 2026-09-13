@@ -181,6 +181,19 @@ impl StartUi {
                                                 .wrap()
                                                 .selectable(false),
                                         );
+                                        if let Some(provider) = m.game.provider() {
+                                            let game_name = match provider {
+                                                Provider::Steam(s) => s.name.as_str(),
+                                            };
+
+                                            if game_name != m.name.as_str() {
+                                                ui.add(
+                                                    Label::new(RichText::new(game_name).small())
+                                                        .wrap()
+                                                        .selectable(false),
+                                                );
+                                            }
+                                        }
                                         ui.add(
                                             Label::new(RichText::new(&self.text_buffer).small())
                                                 .wrap()
