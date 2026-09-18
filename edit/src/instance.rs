@@ -83,11 +83,11 @@ impl EditableInstance {
         }
 
         let lock_file = dir.join(INSTANCE_LOCK_FILE);
-        let lock = File::create(lock_file).unwrap();
+        let lock = File::create(lock_file).map_err(InstanceOpenError::LockOpen)?;
         match lock.try_lock() {
             Ok(()) => {}
             Err(TryLockError::WouldBlock) => return Err(InstanceOpenError::Locked),
-            Err(TryLockError::Error(err)) => return Err(InstanceOpenError::LockOpen(err)),
+            Err(TryLockError::Error(err)) => return Err(InstanceOpenError::Lock(err)),
         }
 
         let data_file = dir.join(INSTANCE_DATA_FILE);
@@ -170,6 +170,8 @@ pub enum InstanceOpenError {
     NotADirectory(Arc<Path>),
     #[error("failed to open lock file")]
     LockOpen(#[source] io::Error),
+    #[error("failed to lock instance")]
+    Lock(#[source] io::Error),
     #[error("this instance is open in another process")]
     Locked,
     #[error("failed to open instance data file")]
