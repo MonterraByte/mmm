@@ -25,7 +25,7 @@ use egui::{
     Align, Button, ColorImage, CornerRadius, Frame, Id, ImageData, Label, Modal, ScrollArea, Sides, TextureHandle,
     TextureOptions, Ui, Vec2, ViewportBuilder, ViewportId, load::SizedTexture,
 };
-use futures::task::noop_waker;
+use futures_task::noop_waker_ref;
 use rfd::AsyncFileDialog;
 
 use mmm_edit::util::ErrorChainDisplay;
@@ -256,7 +256,7 @@ impl FilePicker {
     }
 
     pub fn poll(&mut self) -> PickerResult {
-        match self.0.as_mut().poll(&mut Context::from_waker(&noop_waker())) {
+        match self.0.as_mut().poll(&mut Context::from_waker(noop_waker_ref())) {
             Poll::Pending => PickerResult::Pending,
             Poll::Ready(Some(file)) => {
                 let path = PathBuf::from(file); // gets the contained path without reallocating

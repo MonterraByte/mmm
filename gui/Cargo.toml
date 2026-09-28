@@ -16,7 +16,7 @@ eframe = "0.36"
 egui_extras = "0.36"
 egui_ltreeview = "0.9"
 foldhash = { workspace = true }
-futures = { version = "0.3", default-features = false }
+futures-task = { version = "0.3", default-features = false }
 image = { version = "0.25", default-features = false, features = ["avif", "bmp", "gif", "jpeg", "png", "webp"] }
 mmm-core = { path = "../core" }
 mmm-edit = { path = "../edit" }
